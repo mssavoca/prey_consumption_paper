@@ -174,17 +174,17 @@ lunge_rates_all <- lunge_rates_DTAG_problems_addressed %>%
 
 # READ IN and COMBINE DATA
 # Species-specific average length data (from Shirel's paper) to recalculate average engulfment capacity----
-v_data <- read_csv("MWmeasurements.csv") %>% 
-  group_by(Species) %>% 
-  dplyr::summarize(med_TLm = median(TLm)) %>% 
-  rename(CommonName = Species) %>% 
+v_data <- read_csv("MWmeasurements.csv") %>%
+  group_by(Species) %>%
+  dplyr::summarize(med_TLm = median(TLm)) %>%
+  rename(CommonName = Species) %>%
   mutate(SpeciesCode = case_when(CommonName ==  "Blue Whale" ~ "bw",
                                  CommonName == "Fin Whale"~ "bp",
                                  CommonName ==  "Humpback Whale" ~ "mn",
-                                 CommonName == "Minke Whale" ~ "bb", 
+                                 CommonName == "Minke Whale" ~ "bb",
                                  CommonName == "Bryde's Whale" ~ "be",
                                  CommonName == "Sei Whale" ~ "bs"))
-# # v_data$L <- v_data$MW*0.9766  #creates column that converts MW (kg) to liters
+# # # v_data$L <- v_data$MW*0.9766  #creates column that converts MW (kg) to liters
 
 # Allometric equations from Shirel's paper----
 # creating fucntions from Shirel's paper for MW (in kg) for engulfment capacity in liters for each species where we have a known length
@@ -293,7 +293,7 @@ filtration_master <- lunge_rates_all %>%
       Study_Area == "Chile" ~ "Chile",
       Study_Area == "Falklands" ~ "Falklands")) %>%  
   # Join population numbers
-  left_join(select(pop_data, -c(SpeciesCode, `Current Range`)), by = "Species") %>% 
+  left_join(pop_data, by = "Species") %>% 
   # Join species-median size data
   left_join(select(v_data, -CommonName), by = "SpeciesCode") %>% 
   # Join allometric equations
@@ -357,7 +357,7 @@ dev.copy2pdf(file="All_droned_lengths.pdf", width=12, height=8)
 
 
 Engulfment_capacity <- filtration_master %>% 
-  filter(ID != "bw180904-44") %>% 
+  #filter(ID != "bw180904-44") %>% 
   drop_na(whaleLength) %>% 
   group_by(ID, Species, Engulfment_L) %>% 
   summarise(whaleLength = first(whaleLength)) %>%
@@ -514,6 +514,7 @@ d_strapped <- filtration_master %>%
   group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
   group_modify(sample_rates) %>% 
   ungroup 
+
 
 
 
@@ -799,12 +800,12 @@ Yearly_filtration_hist_pop <-  d_strapped %>%
   
   ggplot(aes(fill = abbr_binom(Species))) +
   geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                       y = water_filtered_yr/1000), 
+                       y = water_filtered_yr/1e9), 
                    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                   y = water_filtered_yr/1000),
+                   y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 1.3324e9, linetype = "dashed") +  # the total volume of water in the ocean
+  geom_hline(yintercept = 133240000, linetype = "dashed") +  # the total volume of water in the ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -941,6 +942,7 @@ dev.copy2pdf(file="Fig_4_feeding.pdf", width=11, height=12)
 # Figure 4 Southern Hemisphere krill feeding populations ----
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
+
 # Current population numbers
 Yearly_filtration_curr_SH_pop <-  d_strapped %>% 
   left_join(pop_data, by = "Species") %>% 
@@ -963,12 +965,12 @@ Yearly_filtration_curr_SH_pop <-  d_strapped %>%
   
   ggplot(aes(fill = abbr_binom(Species))) +
   geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                       y = water_filtered_yr/1000), 
+                       y = water_filtered_yr/1e9), 
                    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                   y = water_filtered_yr/1000),
+                   y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  #geom_hline(yintercept = 1.3324e9, linetype = "dashed") +  # the total volume of water in the ocean
+  geom_hline(yintercept = 7180000, linetype = "dashed") +  # the total volume of water in the top 10% of the Southern Ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -986,6 +988,7 @@ dev.copy2pdf(file="Yearly_filtration_curr_pop.pdf", width=10, height=6)
 
 #Historical numbers
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
 
 Yearly_filtration_hist_SH_pop <-  d_strapped %>% 
   left_join(pop_data, by = "Species") %>% 
@@ -1008,12 +1011,12 @@ Yearly_filtration_hist_SH_pop <-  d_strapped %>%
   
   ggplot(aes(fill = abbr_binom(Species))) +
   geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                       y = water_filtered_yr/1000), 
+                       y = water_filtered_yr/1e9), 
                    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                   y = water_filtered_yr/1000),
+                   y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 1.335e9, linetype = "dashed") +  # the total volume of water in the ocean
+  geom_hline(yintercept = 1640, linetype = "dashed") +  # the total volume of water in the top 10% of the Southern Ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1029,6 +1032,15 @@ Yearly_filtration_hist_SH_pop
 dev.copy2pdf(file="Yearly_filtration_curr_SH_pop.pdf", width=10, height=6)
 
 
+
+
+Krill_catch <- read_csv("AggregatedKrillCatch_CCAMLR.csv") %>% 
+  group_by(Calendar_Year) %>% 
+  summarise(Total_landing_tonnes = sum(Krill_Green_Weight)) %>% 
+  ggplot(aes(Calendar_Year, Total_landing_tonnes)) +
+  geom_bar(stat = "identity") +
+  theme_classic()
+Krill_catch
 
 
 Yearly_krill_ingested_curr_SH_pop <-  d_strapped %>% 
@@ -1061,8 +1073,8 @@ Yearly_krill_ingested_curr_SH_pop <-  d_strapped %>%
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), krill_consumed_yr), 
                    y = krill_consumed_yr/1000),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 3.79e8) +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
-  geom_hline(yintercept = 7.5e8, linetype = "dashed") +  # the total biomass of E. Superba, high estimate from Seigel 2016
+  geom_hline(yintercept = 2.9e5, linetype = "dashed", color = "red") +  # total krill fishery catch from 2018
+  geom_hline(yintercept = 3.79e8, linetype = "dashed") +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
   facet_grid(.~feeding_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1111,8 +1123,9 @@ Yearly_krill_ingested_hist_SH_pop <-  d_strapped %>%
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), krill_consumed_yr), 
                    y = krill_consumed_yr/1000),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 3.79e8) +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
-  geom_hline(yintercept = 7.5e8, linetype = "dashed") +  # the total biomass of E. Superba, high estimate from Seigel 2016
+  geom_hline(yintercept = 2.9e5, linetype = "dashed", color = "red") +  # total krill fishery catch from 2018
+  geom_hline(yintercept = 3.79e8, linetype = "dashed") +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
+  #geom_hline(yintercept = 7.5e8, linetype = "dashed") +  # the total biomass of E. Superba, high estimate from Seigel 2016
   facet_grid(.~feeding_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1128,14 +1141,17 @@ Yearly_krill_ingested_hist_SH_pop
 dev.copy2pdf(file="Yearly_prey_ingested_curr_SH_pop.pdf", width=10, height=6)
 
 
-Yearly_krill_ingested_curr_SH_pop <- ggarrange(Yearly_krill_ingested_curr_SH_pop, Yearly_krill_ingested_hist_SH_pop, 
-                                               labels = c("A", "B"), # THIS IS SO COOL!!
-                                               font.label = list(size = 18),
-                                               legend = "none",
-                                               ncol = 1, nrow = 2)
-Yearly_krill_ingested_curr_SH_pop
+Yearly_krill_ingested_SH_pop <- ggarrange(Yearly_krill_ingested_curr_SH_pop, Yearly_krill_ingested_hist_SH_pop, 
+                                          labels = c("A", "B"), # THIS IS SO COOL!!
+                                          font.label = list(size = 18),
+                                          legend = "none",
+                                          ncol = 1, nrow = 2)
+Yearly_krill_ingested_SH_pop
 
 dev.copy2pdf(file="Yearly_krill_ingested_SH_pop.pdf", width=11, height=12)
+
+
+
 
 
 ##################################
