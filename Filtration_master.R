@@ -202,33 +202,33 @@ engulf_allo <- tribble(
 # Species specific krill prey weight per m^3----
 #from DEC's file BaleenWhaleForagingDistBigKrill100Bins, I think this is the NULL distribution
 # Gives mean biomass of krill in kg per m^3----
-prey_dist <- tribble(
-  ~SpeciesCode, ~ln_mean,          ~ln_sd,
-  "bb",     log(10^-0.302053984),  log(10^(0.402095747^2))^0.5,    # E. superba
-  "bp",     log(10^-0.207001968),  log(10^(0.397598067^2))^0.5,    # T.spin
-  "bw",     log(10^-0.200903497),  log(10^(0.391739563^2))^0.5,    # T.spin
-  "mn",     log(10^-0.21552581),  log(10^(0.400348263^2))^0.5      # T.spin
-)
+# prey_dist <- tribble(
+#   ~SpeciesCode, ~ln_mean,          ~ln_sd,
+#   "bb",     log(10^-0.302053984),  log(10^(0.402095747^2))^0.5,    # E. superba
+#   "bp",     log(10^-0.207001968),  log(10^(0.397598067^2))^0.5,    # T.spin
+#   "bw",     log(10^-0.200903497),  log(10^(0.391739563^2))^0.5,    # T.spin
+#   "mn",     log(10^-0.21552581),  log(10^(0.400348263^2))^0.5      # T.spin
+# )
 
-prey_dist_ENP <- tribble(
-  ~SpeciesCode,     ~ln_mean,             ~ln_sd,
-  "Best_lower",     log(10^0.021189299),  log(10^(0.255272505^2))^0.5,    # T.spin, ALL FROM MRY
-  "Best_upper",     log(10^0.204119983),  log(10^(0.113943352^2))^0.5,    # T.spin, ALL FROM MRY
-  "Hypothetical_low",     log(10^-0.74836178),  0.7374944     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
-)
+# prey_dist_ENP <- tribble(
+#   ~SpeciesCode,     ~ln_mean,             ~ln_sd,
+#   "Best_lower",     log(10^0.021189299),  log(10^(0.255272505^2))^0.5,    # T.spin, ALL FROM MRY
+#   "Best_upper",     log(10^0.204119983),  log(10^(0.113943352^2))^0.5,    # T.spin, ALL FROM MRY
+#   "Hypothetical_low",     log(10^-0.74836178),  0.7374944     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
+# )
 
 
 prey_dist_ENP <- tribble(
   ~SpeciesCode,     ~ln_mean, ~ln_sd,
   "Best_lower",     log(1.05),  log(1.8),    # T.spin, ALL FROM MRY
-  "Best_upper",     log(1.6),  log(1.3),    # T.spin, ALL FROM MRY
+  "Best_upper",     log(1.6),  log(1.3),    # T.spin, ALL FROM MRY 
   "Hypothetical_low",  log(0.1785),  log(0.306)     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
 )
   
 # example of what a blue whale m3 krill density distribution looks like ----
 index = 1:10000
 MRY_hyp_low_prey_dens_m3 <- rlnorm(1e4, log(1.05) + log(0.17),   log(1.8))  # this hypothetical low distribution used extremely large ENP krill (28mm); AND target strength for E. superba, which is bigger than 28mm 
-MRY_best_lower_prey_dens_m3 <- rlnorm(1e4, log(1.05),  log(1.8)) 
+MRY_best_lower_prey_dens_m3 <- rlnorm(1e4, log(0.8),  log(1.9)) 
 MRY_best_upper_prey_dens_m3 <- rlnorm(1e4, log(1.6),  log(1.3)) 
 ex_prey_dens <- as.data.frame(cbind(index, MRY_hyp_low_prey_dens_m3, MRY_best_lower_prey_dens_m3, MRY_best_upper_prey_dens_m3))
 
@@ -236,12 +236,32 @@ ex_prey_dens <- ggplot(ex_prey_dens) +
   #geom_histogram(binwidth = 0.1, fill = "gray80") +
   #geom_density(color = "blue") +
   #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray60") +
-  geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray20") +
-  geom_freqpoly(aes(MRY_best_lower_prey_dens_m3), binwidth = 0.1, color = "blue") +
-  geom_freqpoly(aes(MRY_best_upper_prey_dens_m3), binwidth = 0.1, color = "red") +
+  #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray20") +
+  geom_histogram(aes(MRY_best_lower_prey_dens_m3), binwidth = 0.1, color = "blue") +
+  #geom_freqpoly(aes(MRY_best_upper_prey_dens_m3), binwidth = 0.1, color = "red") +
   labs(x = bquote('krill biomass'~(kg~per~m^3))) +
   theme_classic(base_size = 18)
 ex_prey_dens
+
+
+#MRY SOCAL COMBINATION; THINK ABOUT WHAT COMBINATIONS TO USE
+ # mean values example
+#(log(0.8) + log(0.4))/2
+#answer = -0.5697171
+# to get back to biomass units exp^answer above; exp is e in R, raise e to logged average to get back to kg units
+
+
+pooled_log_mean <- function(m1, m2) {
+  a = (log(m1) + log(m2))/2
+  exp(a)
+}
+
+# pooled sd MAYBE ??? ask Dave about this
+pooled_sd_mean <- function(sd1, n1, sd2, n2) {
+  a = log(sd1^2/n1) + log(sd2^2/n2)
+  exp(a)
+}
+
 
 
 
