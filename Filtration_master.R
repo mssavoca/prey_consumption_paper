@@ -2,7 +2,7 @@
 # Lunge rates and prey consumption calculations and visualizations ----
 ##################################################################
 
-# load data and packages and fuctions 
+# load data and packages and functions ----
 library(data.table)
 library(readxl)
 library(forcats)
@@ -199,53 +199,11 @@ engulf_allo <- tribble(
 )
 
 
-# Species specific krill prey weight per m^3----
-#from DEC's file BaleenWhaleForagingDistBigKrill100Bins, I think this is the NULL distribution
-# Gives mean biomass of krill in kg per m^3----
-# prey_dist <- tribble(
-#   ~SpeciesCode, ~ln_mean,          ~ln_sd,
-#   "bb",     log(10^-0.302053984),  log(10^(0.402095747^2))^0.5,    # E. superba
-#   "bp",     log(10^-0.207001968),  log(10^(0.397598067^2))^0.5,    # T.spin
-#   "bw",     log(10^-0.200903497),  log(10^(0.391739563^2))^0.5,    # T.spin
-#   "mn",     log(10^-0.21552581),  log(10^(0.400348263^2))^0.5      # T.spin
-# )
-
-# prey_dist_ENP <- tribble(
-#   ~SpeciesCode,     ~ln_mean,             ~ln_sd,
-#   "Best_lower",     log(10^0.021189299),  log(10^(0.255272505^2))^0.5,    # T.spin, ALL FROM MRY
-#   "Best_upper",     log(10^0.204119983),  log(10^(0.113943352^2))^0.5,    # T.spin, ALL FROM MRY
-#   "Hypothetical_low",     log(10^-0.74836178),  0.7374944     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
-# )
 
 
-prey_dist_ENP <- tribble(
-  ~SpeciesCode,     ~ln_mean, ~ln_sd,
-  "Best_lower",     log(1.05),  log(1.8),    # T.spin, ALL FROM MRY
-  "Best_upper",     log(1.6),  log(1.3),    # T.spin, ALL FROM MRY 
-  "Hypothetical_low",  log(0.1785),  log(0.306)     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
-)
-  
-# example of what a blue whale m3 krill density distribution looks like ----
-index = 1:10000
-MRY_hyp_low_prey_dens_m3 <- rlnorm(1e4, log(1.05) + log(0.17),   log(1.8))  # this hypothetical low distribution used extremely large ENP krill (28mm); AND target strength for E. superba, which is bigger than 28mm 
-MRY_best_lower_prey_dens_m3 <- rlnorm(1e4, log(0.8),  log(1.9)) 
-MRY_best_upper_prey_dens_m3 <- rlnorm(1e4, log(1.6),  log(1.3)) 
-ex_prey_dens <- as.data.frame(cbind(index, MRY_hyp_low_prey_dens_m3, MRY_best_lower_prey_dens_m3, MRY_best_upper_prey_dens_m3))
-
-ex_prey_dens <- ggplot(ex_prey_dens) + 
-  #geom_histogram(binwidth = 0.1, fill = "gray80") +
-  #geom_density(color = "blue") +
-  #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray60") +
-  #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray20") +
-  geom_histogram(aes(MRY_best_lower_prey_dens_m3), binwidth = 0.1, color = "blue") +
-  #geom_freqpoly(aes(MRY_best_upper_prey_dens_m3), binwidth = 0.1, color = "red") +
-  labs(x = bquote('krill biomass'~(kg~per~m^3))) +
-  theme_classic(base_size = 18)
-ex_prey_dens
-
-
+# Prey data from Dave Cade, recieved on 10/19 ----
 #MRY SOCAL COMBINATION; THINK ABOUT WHAT COMBINATIONS TO USE
- # mean values example
+# mean values example
 #(log(0.8) + log(0.4))/2
 #answer = -0.5697171
 # to get back to biomass units exp^answer above; exp is e in R, raise e to logged average to get back to kg units
@@ -253,14 +211,60 @@ ex_prey_dens
 
 pooled_log_mean <- function(m1, m2) {
   a = (log(m1) + log(m2))/2
-  exp(a)
+  exp(a)  #turns values back into biomass units (kg/m3)
 }
 
-# pooled sd MAYBE ??? ask Dave about this
-pooled_sd_mean <- function(sd1, n1, sd2, n2) {
-  a = log(sd1^2/n1) + log(sd2^2/n2)
-  exp(a)
+
+# pooled sd
+pooled_sd_mean <- function(sd1, sd2, n1, n2) {
+  
+  a=log(sd1)
+  b=log(sd2)
+  
+  pooled_sd = sqrt(((n1-1)*a^2 + (n2-1)*b^2)/(n1+n2-2))  # https://www.statisticshowto.datasciencecentral.com/pooled-standard-deviation/ 
+  
+  exp(pooled_sd)   #turns values back into biomass units (kg/m3)
 }
+# read in, clean, combine data
+
+MRY_krill_data <- read_excel("MontereyKrillData.xlsx", sheet = 2) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  filter(!Species %in% c("bigBW", "bb")) %>% 
+  mutate(Study_Area = "Monterey") %>% 
+  rename(SpeciesCode = "Species")
+
+SoCal_krill_data <- read_excel("SoCalKrillData.xlsx", sheet = 2) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  filter(!Species %in% c("bigBW", "bb")) %>% 
+  mutate(Study_Area = "SoCal") %>% 
+  rename(SpeciesCode = "Species")
+
+# combining Monterey and SoCal prey data
+ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
+  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`, Biomass:BiomassTop50sd)) %>% 
+  mutate(`Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+    Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
+         `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+         BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+         BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+         Region = "Eastern North Pacific") %>% 
+  select(-c(`Num Days_Monterey`:BiomassTop50sd_SoCal))
+
+
+WAP_krill_data <- read_excel("AntarcticKrillData.xlsx", sheet = 2) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  filter(!Species %in% c("bigBW", "bw", "bp")) %>% 
+  mutate(Study_Area = "Antarctic") %>% 
+  rename(SpeciesCode = "Species")
+
+SA_krill_data <- read_excel("SouthAfricaKrillData.xlsx", sheet = 2) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
+  mutate(Study_Area = "South Africa") %>% 
+  rename(SpeciesCode = "Species")
+
+All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data)
+
 
 
 
@@ -280,6 +284,7 @@ tag_guide <- read_excel("TAG GUIDE_9.5.19.xlsx", skip = 2) %>%  # Skips first tw
 tag_guide_ENP <- tag_guide %>% 
   filter(Study_Area %in% c("Monterey", "Cordell Bank", "SoCal", "San Diego", "WA Coast", "Alaska"))
 #View(tag_guide_ENP)  # this is for CATS tags only, need to add in DTags for full dataset
+
 
 # Master filtration rate file----
 filtration_master <- lunge_rates_all %>%
@@ -323,15 +328,29 @@ filtration_master <- lunge_rates_all %>%
     BestLengthEst = coalesce(whaleLength, med_TLm),
     Engulfment_L = BestLengthEst ^ slope * 10 ^ intercept * 0.9766,
     EngulfVolPerHr = Engulfment_L*Rate) %>% 
-  left_join(prey_dist, by = "SpeciesCode") %>% 
+  # adding in krill prey data. Remember: biomass is in kg/m3 here, need to convert back to log to average by region
+  left_join(SA_krill_data, by = c("SpeciesCode", "Study_Area")) %>% 
+  left_join(WAP_krill_data, by = c("SpeciesCode", "Study_Area")) %>% 
+  left_join(ENP_krill_data, by = c("SpeciesCode", "Region")) %>%
+  mutate(Num_Days = coalesce(`Num Days`, `Num Days.x`, `Num Days.y`),
+         Biomass = coalesce(Biomass, Biomass.x, Biomass.y),
+         Biomass_sd = coalesce(`Biomass sd`, `Biomass sd.x`, `Biomass sd.y`),
+         BiomassTop50 = coalesce(BiomassTop50, BiomassTop50.x, BiomassTop50.y),
+         BiomassTop50sd = coalesce(BiomassTop50sd, BiomassTop50sd.x, BiomassTop50sd.y)) %>% 
+ select(-c(`Num Days.x`, `Num Days.y`, 
+            Biomass.x, Biomass.y, 
+            `Biomass sd`, `Biomass sd.x`, `Biomass sd.y`,
+            BiomassTop50.x, BiomassTop50.y,
+            BiomassTop50sd.x, BiomassTop50sd.y)) %>%
   ungroup %>% 
-  mutate(prey_hyp_low_lnmean = -1.72316668,
-         prey_hyp_low_lnsd = 0.7374944,
-         prey_best_low_lnmean = 0.04879016,
-         prey_best_low_lnsd = 0.3873574,
-         prey_best_upper_lnmean = 0.47000363,
-         prey_best_upper_lnsd = 0.1729007)
+ #converting to log scale to later sample from log-normal distirbution
+   mutate(prey_best_low_lnmean = log(Biomass),
+         prey_best_low_lnsd = log(Biomass_sd),
+         prey_best_upper_lnmean = log(BiomassTop50),
+         prey_best_upper_lnsd = log(BiomassTop50sd))
 
+    
+    
 
 filtration_master %>%
   group_by(Species) %>%
@@ -517,9 +536,9 @@ sample_rates <- function(rows, keys) {
                    slope = rows$slope[1],
                    intercept = rows$intercept[1],
                    measured_engulfment_cap_m3 = (length_distrib ^ slope * 10 ^ intercept * 0.9766)/1000,
-                   prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
-                                                   lnmean = rows$prey_hyp_low_lnmean[1], 
-                                                   lnsd = rows$prey_hyp_low_lnsd[1]),
+                   # prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
+                   #                                 lnmean = rows$prey_hyp_low_lnmean[1], 
+                   #                                 lnsd = rows$prey_hyp_low_lnsd[1]),
                    prey_mass_per_day_best_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
                                                            lnmean = rows$prey_best_low_lnmean[1], 
                                                            lnsd = rows$prey_best_low_lnsd[1]),
@@ -530,11 +549,22 @@ sample_rates <- function(rows, keys) {
 }
 
 d_strapped <- filtration_master %>% 
-  #filter(prey_general == "Krill") %>% 
+  filter(prey_general == "Krill") %>% 
   group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
   group_modify(sample_rates) %>% 
   ungroup 
 
+
+
+# using the sampling fuction to come up with amount of prey consumed
+summ_stats <- d_strapped %>% 
+  group_by(Species, Region) %>% 
+  summarise(med_daily_consumpt_best = median(prey_mass_per_day_best_low_kg),
+            med_daily_consumpt_best_IQR25 = quantile(prey_mass_per_day_best_low_kg, probs = 0.25, na.rm = TRUE), 
+            med_daily_consumpt_best_IQR75 = quantile(prey_mass_per_day_best_low_kg, probs = 0.75, na.rm = TRUE), 
+            med_daily_consumpt_top50 = median(prey_mass_per_day_best_upper_kg),
+            med_daily_consumpt_top50_IQR25 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.25, na.rm = TRUE), 
+            med_daily_consumpt_top50_IQR75 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.75, na.rm = TRUE))
 
 
 
@@ -557,6 +587,7 @@ Measured_length <- ggplot(d_strapped,
   theme(legend.position = "none",
         axis.text.y = element_text(face = "italic"))
 Measured_length
+
 
 # Figure 2----
 
@@ -624,10 +655,10 @@ Daily_biomass_ingested <- d_strapped %>%
                    fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.8,
                position = position_nudge(x = 0.12, y = 0)) +
   #best-upper
-  # geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000, 
-  #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
-  # geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000, 
-  #                  fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1) +
+  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000,
+                       fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
+  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000,
+                   fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1) +
   #ylim(0,100) +
   coord_flip() +
   scale_fill_manual(values = pal) +
@@ -990,7 +1021,6 @@ Yearly_filtration_curr_SH_pop <-  d_strapped %>%
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
                    y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 7180000, linetype = "dashed") +  # the total volume of water in the top 10% of the Southern Ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1036,7 +1066,7 @@ Yearly_filtration_hist_SH_pop <-  d_strapped %>%
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
                    y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 1640, linetype = "dashed") +  # the total volume of water in the top 10% of the Southern Ocean
+  geom_hline(yintercept = 7180000, linetype = "dashed") +  # the total volume of water in the top 10% of the Southern Ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1174,10 +1204,61 @@ dev.copy2pdf(file="Yearly_krill_ingested_SH_pop.pdf", width=11, height=12)
 
 
 
+
+
 ##################################
 # Create prey consumption function
 ##################################
 
+
+
+# Old code below here ----
+
+
+
+# Species specific krill prey weight per m^3----
+#from DEC's file BaleenWhaleForagingDistBigKrill100Bins, I think this is the NULL distribution
+# Gives mean biomass of krill in kg per m^3----
+# prey_dist <- tribble(
+#   ~SpeciesCode, ~ln_mean,          ~ln_sd,
+#   "bb",     log(10^-0.302053984),  log(10^(0.402095747^2))^0.5,    # E. superba
+#   "bp",     log(10^-0.207001968),  log(10^(0.397598067^2))^0.5,    # T.spin
+#   "bw",     log(10^-0.200903497),  log(10^(0.391739563^2))^0.5,    # T.spin
+#   "mn",     log(10^-0.21552581),  log(10^(0.400348263^2))^0.5      # T.spin
+# )
+
+# prey_dist_ENP <- tribble(
+#   ~SpeciesCode,     ~ln_mean,             ~ln_sd,
+#   "Best_lower",     log(10^0.021189299),  log(10^(0.255272505^2))^0.5,    # T.spin, ALL FROM MRY
+#   "Best_upper",     log(10^0.204119983),  log(10^(0.113943352^2))^0.5,    # T.spin, ALL FROM MRY
+#   "Hypothetical_low",     log(10^-0.74836178),  0.7374944     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
+# )
+
+
+# prey_dist_ENP <- tribble(
+#   ~SpeciesCode,     ~ln_mean, ~ln_sd,
+#   "Best_lower",     log(1.05),  log(1.8),    # T.spin, ALL FROM MRY
+#   "Best_upper",     log(1.6),  log(1.3),    # T.spin, ALL FROM MRY 
+#   "Hypothetical_low",  log(0.1785),  log(0.306)     #log(10^(-0.514278574)^2)^0.5      # had to calculate manually or NaN is produced
+# )
+#   
+# example of what a blue whale m3 krill density distribution looks like ----
+# index = 1:10000
+# MRY_hyp_low_prey_dens_m3 <- rlnorm(1e4, log(1.05) + log(0.17),   log(1.8))  # this hypothetical low distribution used extremely large ENP krill (28mm); AND target strength for E. superba, which is bigger than 28mm 
+# MRY_best_lower_prey_dens_m3 <- rlnorm(1e4, log(0.8),  log(1.9)) 
+# MRY_best_upper_prey_dens_m3 <- rlnorm(1e4, log(1.6),  log(1.3)) 
+# ex_prey_dens <- as.data.frame(cbind(index, MRY_hyp_low_prey_dens_m3, MRY_best_lower_prey_dens_m3, MRY_best_upper_prey_dens_m3))
+# 
+# ex_prey_dens <- ggplot(ex_prey_dens) + 
+#   #geom_histogram(binwidth = 0.1, fill = "gray80") +
+#   #geom_density(color = "blue") +
+#   #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray60") +
+#   #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray20") +
+#   geom_histogram(aes(MRY_best_lower_prey_dens_m3), binwidth = 0.1, color = "blue") +
+#   #geom_freqpoly(aes(MRY_best_upper_prey_dens_m3), binwidth = 0.1, color = "red") +
+#   labs(x = bquote('krill biomass'~(kg~per~m^3))) +
+#   theme_classic(base_size = 18)
+# ex_prey_dens
 
 
 
