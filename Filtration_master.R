@@ -164,9 +164,29 @@ lunge_rates_all <- lunge_rates_DTAG_problems_addressed %>%
 ## REMOVE BAD DEPLOYMENTS ###
 bad_ID <- read_csv("Bad ID.csv")
 
-#put all DTAG deployments together 
+# adding in Bryde's deployments from 2018
+Brydes_lunges <- read_csv("Brydes_2018_lunge_rates.csv") %>% 
+  select(ID, study_area, region, prey_general, duration_h, daylight_h, twilight_h, night_h, total_lunges) 
+
+
+Brydes_lunges_long <- Brydes_lunges %>% 
+  pivot_longer(duration_h:night_h, names_to = "Phase", values_to = "Time (hours)") %>% 
+  rename(Study_Area = study_area,
+         Region = region, 
+         Lunges = total_lunges) %>% 
+  mutate(prey_general = "Fish",
+         tag_type = "CATS",
+         Phase = case_when(Phase == "duration_h" ~ "Total",
+                           Phase == "daylight_h" ~ "Day",
+                           Phase == "twilight_h" ~ "Twilight",
+                           Phase == "night_h" ~ "Night"),
+         Rate = Lunges/`Time (hours)`) %>% 
+  mutate_at(vars(Rate), ~replace(., is.infinite(.), 0))
+
+
+#put all deployments together (DTAG and CATS)
 lunge_rates_all <- lunge_rates_DTAG_problems_addressed %>% 
-  bind_rows(lunge_rates_CATS) %>% 
+  bind_rows(lunge_rates_CATS, Brydes_lunges_long) %>% 
   mutate(SpeciesCode = substr(ID, 1, 2)) %>% 
   anti_join(bad_ID, by = "ID")
 
@@ -225,45 +245,72 @@ pooled_sd_mean <- function(sd1, sd2, n1, n2) {
   
   exp(pooled_sd)   #turns values back into biomass units (kg/m3)
 }
-# read in, clean, combine data
 
+
+# read in, clean, combine data
 MRY_krill_data <- read_excel("MontereyKrillData.xlsx", sheet = 2) %>% 
   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   filter(!Species %in% c("bigBW", "bb")) %>% 
-  mutate(Study_Area = "Monterey") %>% 
-  rename(SpeciesCode = "Species")
+  mutate(
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Study_Area = "Monterey",
+    Region = "Eastern North Pacific") %>% 
+  rename(SpeciesCode = "Species") 
 
 SoCal_krill_data <- read_excel("SoCalKrillData.xlsx", sheet = 2) %>% 
   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   filter(!Species %in% c("bigBW", "bb")) %>% 
-  mutate(Study_Area = "SoCal") %>% 
-  rename(SpeciesCode = "Species")
+  mutate(
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Study_Area = "SoCal",
+    Region = "Eastern North Pacific") %>% 
+  rename(SpeciesCode = "Species") 
 
 # combining Monterey and SoCal prey data
 ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
-  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`, Biomass:BiomassTop50sd)) %>% 
-  mutate(`Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+  #mutate(Study_Area2 = Study_Area) %>% 
+  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
+  #rename(Study_Area = Study_Area2) %>% 
+  mutate(
+    `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+    Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
     Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
-         `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
-         BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
-         BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
-         Region = "Eastern North Pacific") %>% 
-  select(-c(`Num Days_Monterey`:BiomassTop50sd_SoCal))
+    `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    Study_Area = NA
+    # 
+    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
+    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
+    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
+    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+  ) %>% 
+  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
 
 
 WAP_krill_data <- read_excel("AntarcticKrillData.xlsx", sheet = 2) %>% 
   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   filter(!Species %in% c("bigBW", "bw", "bp")) %>% 
-  mutate(Study_Area = "Antarctic") %>% 
+  mutate(
+    Biomass_hyp_low = NA,
+    Study_Area = "Antarctic",
+    Region = "Antarctic") %>% 
   rename(SpeciesCode = "Species")
 
 SA_krill_data <- read_excel("SouthAfricaKrillData.xlsx", sheet = 2) %>% 
   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
-  mutate(Study_Area = "South Africa") %>% 
-  rename(SpeciesCode = "Species")
+  mutate(
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Study_Area = "South Africa",
+    Region = "South Africa") %>% 
+  rename(SpeciesCode = "Species") 
 
-All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data)
+All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data) 
+
+All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data, SA_krill_data) 
 
 
 
@@ -327,39 +374,69 @@ filtration_master <- lunge_rates_all %>%
   mutate(
     BestLengthEst = coalesce(whaleLength, med_TLm),
     Engulfment_L = BestLengthEst ^ slope * 10 ^ intercept * 0.9766,
-    EngulfVolPerHr = Engulfment_L*Rate) %>% 
+    EngulfVolPerHr = Engulfment_L*Rate) %>%     #volume engulfed in liters per hour
   # adding in krill prey data. Remember: biomass is in kg/m3 here, need to convert back to log to average by region
-  left_join(SA_krill_data, by = c("SpeciesCode", "Study_Area")) %>% 
-  left_join(WAP_krill_data, by = c("SpeciesCode", "Study_Area")) %>% 
-  left_join(ENP_krill_data, by = c("SpeciesCode", "Region")) %>%
-  mutate(Num_Days = coalesce(`Num Days`, `Num Days.x`, `Num Days.y`),
-         Biomass = coalesce(Biomass, Biomass.x, Biomass.y),
-         Biomass_sd = coalesce(`Biomass sd`, `Biomass sd.x`, `Biomass sd.y`),
-         BiomassTop50 = coalesce(BiomassTop50, BiomassTop50.x, BiomassTop50.y),
-         BiomassTop50sd = coalesce(BiomassTop50sd, BiomassTop50sd.x, BiomassTop50sd.y)) %>% 
- select(-c(`Num Days.x`, `Num Days.y`, 
-            Biomass.x, Biomass.y, 
-            `Biomass sd`, `Biomass sd.x`, `Biomass sd.y`,
-            BiomassTop50.x, BiomassTop50.y,
-            BiomassTop50sd.x, BiomassTop50sd.y)) %>%
+  left_join(All_krill_data_ENPcombined, by = c("SpeciesCode", "Region")) %>% 
+  mutate(Study_Area = coalesce(Study_Area.x, Study_Area.y)) %>% 
+  select(-c(Study_Area.x, Study_Area.y)) %>%
   ungroup %>% 
- #converting to log scale to later sample from log-normal distirbution
-   mutate(prey_best_low_lnmean = log(Biomass),
-         prey_best_low_lnsd = log(Biomass_sd),
-         prey_best_upper_lnmean = log(BiomassTop50),
-         prey_best_upper_lnsd = log(BiomassTop50sd))
+  #converting to log scale to later sample from log-normal distirbution
+  mutate(
+    prey_hyp_low_lnmean = log(Biomass_hyp_low),
+    prey_hyp_low_lnsd = log(`Biomass sd`),
+    prey_best_low_lnmean = log(Biomass),
+    prey_best_low_lnsd = log(`Biomass sd`),
+    prey_best_upper_lnmean = log(BiomassTop50),
+    prey_best_upper_lnsd = log(BiomassTop50sd))
 
-    
-    
+
+#see what deployments are missing and determine if they can be added
+missing_deploy <- tag_guide %>% 
+  anti_join(select(filtration_master, ID, Study_Area), by = "ID") %>% 
+  mutate(`Total Tag On Time HH:MM:SS _` = as.numeric(`Total Tag On Time HH:MM:SS _`)) %>% 
+  filter(SpeciesCode %in% c("bb", "be", "mn", "bp", "bw"),
+         `PRH _` == "Y",
+         "Total Tag On Time HH:MM:SS _" > 1)
+
 
 filtration_master %>%
   group_by(Species) %>%
-  summarise(mean_length = median(whaleLength))
+  summarise(med_length = mean(whaleLength, na.rm = TRUE))
 
 
 
 
-# plots of raw data----
+# plots and descriptions of raw data----
+length_MW <- filtration_master %>%
+  filter(Phase =="Total") %>% 
+  drop_na(whaleLength) %>% 
+  group_by(Species) %>% 
+  summarise(
+    sample_size = n_distinct(ID),
+    med_length = round(median(whaleLength), 2),
+    IQR25_length = round(quantile(whaleLength, probs = 0.25, na.rm = TRUE), 2),
+    IQR75_length = round(quantile(whaleLength, probs = 0.75, na.rm = TRUE), 2),
+    med_engulf_cap = round(median(Engulfment_L/1000),2),
+    IQR25_engulf_cap = round(quantile(Engulfment_L, probs = 0.25, na.rm = TRUE)/1000, 2),
+    IQR75_engulf_cap = round(quantile(Engulfment_L, probs = 0.75, na.rm = TRUE)/1000, 2)) %>% 
+  unite("Length IQR", c(IQR25_length, IQR75_length), sep = "-") %>% 
+  unite("Engulf Cap IQR", c(IQR25_engulf_cap, IQR75_engulf_cap), sep = "-") %>% 
+  arrange(med_length)
+
+
+Feeding_rates_krill <- filtration_master %>%
+  filter(prey_general =="Fish", Phase != "Total", Region != "Chile") %>% 
+  group_by(Species, Phase, Region) %>% 
+  summarise(
+    sample_size = n_distinct(ID),
+    med_rate = round(median(Rate), 2),
+    IQR25_rate = round(quantile(Rate, probs = 0.25, na.rm = TRUE), 2),
+    IQR75_rate = round(quantile(Rate, probs = 0.75, na.rm = TRUE), 2)) %>% 
+  pivot_wider(names_from = Phase, values_from = med_rate:IQR75_rate) %>% 
+  unite("Day rate IQR", c(IQR25_rate_Day, IQR75_rate_Day), sep = "-") %>% 
+  unite("Twilight rate IQR", c(IQR25_rate_Twilight, IQR75_rate_Twilight), sep = "-") %>% 
+  unite("Night rate IQR", c(IQR25_rate_Night, IQR75_rate_Night), sep = "-") 
+
   
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
   
@@ -536,9 +613,9 @@ sample_rates <- function(rows, keys) {
                    slope = rows$slope[1],
                    intercept = rows$intercept[1],
                    measured_engulfment_cap_m3 = (length_distrib ^ slope * 10 ^ intercept * 0.9766)/1000,
-                   # prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
-                   #                                 lnmean = rows$prey_hyp_low_lnmean[1], 
-                   #                                 lnsd = rows$prey_hyp_low_lnsd[1]),
+                   prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day,
+                                                   lnmean = rows$prey_hyp_low_lnmean[1],
+                                                   lnsd = rows$prey_hyp_low_lnsd[1]),
                    prey_mass_per_day_best_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
                                                            lnmean = rows$prey_best_low_lnmean[1], 
                                                            lnsd = rows$prey_best_low_lnsd[1]),
@@ -549,22 +626,27 @@ sample_rates <- function(rows, keys) {
 }
 
 d_strapped <- filtration_master %>% 
-  filter(prey_general == "Krill") %>% 
+  filter(
+    Region !="Antarctic",
+    prey_general == "Krill") %>% 
   group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
   group_modify(sample_rates) %>% 
-  ungroup 
+  ungroup %>% 
+  mutate(Species = factor(Species))
 
 
 
 # using the sampling fuction to come up with amount of prey consumed
-summ_stats <- d_strapped %>% 
+summ_prey_stats <- d_strapped %>% 
   group_by(Species, Region) %>% 
-  summarise(med_daily_consumpt_best = median(prey_mass_per_day_best_low_kg),
+  summarise(
+    med_daily_consumpt_best = median(prey_mass_per_day_best_low_kg),
             med_daily_consumpt_best_IQR25 = quantile(prey_mass_per_day_best_low_kg, probs = 0.25, na.rm = TRUE), 
             med_daily_consumpt_best_IQR75 = quantile(prey_mass_per_day_best_low_kg, probs = 0.75, na.rm = TRUE), 
-            med_daily_consumpt_top50 = median(prey_mass_per_day_best_upper_kg),
+   med_daily_consumpt_top50 = median(prey_mass_per_day_best_upper_kg),
             med_daily_consumpt_top50_IQR25 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.25, na.rm = TRUE), 
-            med_daily_consumpt_top50_IQR75 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.75, na.rm = TRUE))
+            med_daily_consumpt_top50_IQR75 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.75, na.rm = TRUE)) %>% 
+  unite("Night rate IQR", c(IQR25_rate_Night, IQR75_rate_Night), sep = "-")
 
 
 
@@ -606,14 +688,14 @@ Daily_rate <- d_strapped %>%
   labs(x = "Species",
        y = bquote('Estimated feeding rate'~(lunges~d^-1))) + 
   #ylim(0, 2000) +
-  scale_y_log10(labels = scales::comma, breaks = c(10,100,500,1000)) +
+  scale_y_log10(labels = scales::comma, breaks = c(10,100,250,500,1000)) +
   theme_classic(base_size = 24) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.text.y = element_text(face = "italic"))
 Daily_rate
 
-dev.copy2pdf(file="Daily_rate.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_rate_nonAntarctic.pdf", width=16, height=6)
 
 
 Daily_filtration <-  d_strapped %>% 
@@ -625,7 +707,7 @@ Daily_filtration <-  d_strapped %>%
   geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
   coord_flip() + 
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, breaks = c(100,1000,5000,10000,50000)) +
+  scale_y_log10(labels = scales::comma, breaks = c(100,1000,5000,10000,50000,100000)) +
   #ylim(0,60000) +
   labs(x = "Species",
        y = bquote('Estimated water filtered'~(m^3~d^-1))) + 
@@ -635,7 +717,7 @@ Daily_filtration <-  d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Daily_filtration
 
-dev.copy2pdf(file="Daily_filtration.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_filtration_nonAntarctic.pdf", width=16, height=6)
 
 
 Daily_biomass_ingested <- d_strapped %>% 
@@ -643,26 +725,26 @@ Daily_biomass_ingested <- d_strapped %>%
          prey_general == "Krill") %>% 
   ggplot() +
   #hyp-low
-  # geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_hyp_low_kg), y = prey_mass_per_day_hyp_low_kg/1000, 
+  # geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_hyp_low_kg), y = prey_mass_per_day_hyp_low_kg/1000,
   #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
-  # geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_hyp_low_kg), y = prey_mass_per_day_hyp_low_kg/1000, 
+  # geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_hyp_low_kg), y = prey_mass_per_day_hyp_low_kg/1000,
   #                  fill = abbr_binom(Species)), color = "gray20", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1,
   #              position = position_nudge(x = -0.12, y = 0)) +
   #best-low *our best estimate*
-  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_low_kg), y = prey_mass_per_day_best_low_kg/1000, 
+  geom_flat_violin(aes(x = fct_relevel(abbr_binom(Species), "Megaptera novaeangliae"), y = prey_mass_per_day_best_low_kg/1000, 
                        fill = abbr_binom(Species)), position = position_nudge(x = 0.2, y = 0), alpha = 1, adjust = 2) +
-  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_low_kg), y = prey_mass_per_day_best_low_kg/1000, 
+  geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), "Megaptera novaeangliae"), y = prey_mass_per_day_best_low_kg/1000, 
                    fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.8,
                position = position_nudge(x = 0.12, y = 0)) +
   #best-upper
-  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000,
-                       fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
-  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000,
-                   fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1) +
+  # geom_flat_violin(aes(x = fct_relevel(abbr_binom(Species), "B. musculus"), y = prey_mass_per_day_best_upper_kg/1000,
+  #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
+  # geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000,
+  #                  fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1) +
   #ylim(0,100) +
   coord_flip() +
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.1,100), breaks = c(0,1,10,50,100)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1,100), breaks = c(0,1,10,25,50, 75)) +
   labs(x = "Species",
        y = bquote('Estimated prey consumed'~(tonnes~d^-1))) +
   theme_classic(base_size = 24) +
@@ -671,21 +753,21 @@ Daily_biomass_ingested <- d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Daily_biomass_ingested
 
-dev.copy2pdf(file="Daily_biomass_ingested.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_biomass_ingested_nonAntarctic.pdf", width=16, height=6)
 
 
-Fig_2 <- ggarrange(Daily_rate, Daily_filtration, Daily_biomass_ingested, 
-          labels = c("A", "B", "C"), # THIS IS SO COOL!!
+Fig_2_nonAntarctic <- ggarrange(Daily_rate, Daily_filtration, Daily_biomass_ingested, 
+          labels = c("D", "E", "F"), # THIS IS SO COOL!!
           font.label = list(size = 18),
           legend = "none",
           ncol = 1, nrow = 3)
-Fig_2
+Fig_2_nonAntarctic
 
-dev.copy2pdf(file="Fig_2.pdf", width=12, height=18)
+dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
 
 
 
-# Figure 3 ----
+ # Figure 3 ----
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
 Yearly_filtration <-  d_strapped %>% 
