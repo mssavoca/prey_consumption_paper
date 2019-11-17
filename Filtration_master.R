@@ -627,27 +627,75 @@ sample_rates <- function(rows, keys) {
 
 d_strapped <- filtration_master %>% 
   filter(
-    Region !="Antarctic",
+    #Region != "Chile",
     prey_general == "Krill") %>% 
   group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
   group_modify(sample_rates) %>% 
   ungroup %>% 
-  mutate(Species = factor(Species))
+  left_join(pop_data, by = "Species")
+
+
+#Adding in krill energy density in kJ/kg; see scaling paper supplement
+d_strapped <-  d_strapped%>% 
+  mutate(EnDens_hyp_low = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_hyp_low_kg,
+                                    Region != "Antarctic" ~ 3370*prey_mass_per_day_hyp_low_kg),
+         EnDens_best_low = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_best_low_kg,
+                                    Region != "Antarctic" ~ 3370*prey_mass_per_day_best_low_kg),
+         EnDens_best_upper = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_best_upper_kg,
+                                    Region != "Antarctic" ~ 3370*prey_mass_per_day_best_upper_kg))
 
 
 
-# using the sampling fuction to come up with amount of prey consumed
-summ_prey_stats <- d_strapped %>% 
+
+#summary tables of lunges, water filtered, and prey consumed per day----
+summ_stats_all <- d_strapped %>% 
+  #filter(Species !="Balaenoptera physalus" & Region != "North Atlantic") %>% 
   group_by(Species, Region) %>% 
   summarise(
-    med_daily_consumpt_best = median(prey_mass_per_day_best_low_kg),
-            med_daily_consumpt_best_IQR25 = quantile(prey_mass_per_day_best_low_kg, probs = 0.25, na.rm = TRUE), 
-            med_daily_consumpt_best_IQR75 = quantile(prey_mass_per_day_best_low_kg, probs = 0.75, na.rm = TRUE), 
-   med_daily_consumpt_top50 = median(prey_mass_per_day_best_upper_kg),
-            med_daily_consumpt_top50_IQR25 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.25, na.rm = TRUE), 
-            med_daily_consumpt_top50_IQR75 = quantile(prey_mass_per_day_best_upper_kg, probs = 0.75, na.rm = TRUE)) %>% 
-  unite("Night rate IQR", c(IQR25_rate_Night, IQR75_rate_Night), sep = "-")
+    `Lunges per day` = median(daily_rate),
+    Daily_rate_IQR25 = round(quantile(daily_rate, probs = 0.25, na.rm = TRUE), 2), 
+    Daily_rate_IQR75 = round(quantile(daily_rate, probs = 0.75, na.rm = TRUE), 2),
+    `Water filtered per day` = median(measured_engulfment_cap_m3*daily_rate),
+    Water_filtered_IQR25 = round(quantile(measured_engulfment_cap_m3*daily_rate, probs = 0.25, na.rm = TRUE), 2), 
+    Water_filtered_IQR75 = round(quantile(measured_engulfment_cap_m3*daily_rate, probs = 0.75, na.rm = TRUE), 2)) %>% 
+  unite("Lunges per day IQR", c(Daily_rate_IQR25, Daily_rate_IQR75), sep = "-") %>% 
+  unite("Water filtered per day IQR", c(Water_filtered_IQR25, Water_filtered_IQR75), sep = "-")
 
+summ_prey_stats <- d_strapped %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  group_by(Species, Region) %>% 
+  summarise(
+    med_daily_consumpt_hyp_low = median(prey_mass_per_day_hyp_low_kg),
+    med_daily_consumpt_hyp_low_IQR25 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.25, na.rm = TRUE), 2),
+    med_daily_consumpt_hyp_low_IQR75 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.75, na.rm = TRUE), 2),
+    med_daily_consumpt_best = round(median(prey_mass_per_day_best_low_kg), 2),
+    med_daily_consumpt_best_IQR25 = round(quantile(prey_mass_per_day_best_low_kg, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_consumpt_best_IQR75 = round(quantile(prey_mass_per_day_best_low_kg, probs = 0.75, na.rm = TRUE), 2), 
+    med_daily_consumpt_top50 = round(median(prey_mass_per_day_best_upper_kg), 2),
+    med_daily_consumpt_top50_IQR25 = round(quantile(prey_mass_per_day_best_upper_kg, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_consumpt_top50_IQR75 = round(quantile(prey_mass_per_day_best_upper_kg, probs = 0.75, na.rm = TRUE), 2)) %>% 
+  unite("Daily consumption lower estimate IQR", c(med_daily_consumpt_hyp_low_IQR25, med_daily_consumpt_hyp_low_IQR75), sep = "-") %>% 
+  unite("Daily consumption IQR", c(med_daily_consumpt_best_IQR25, med_daily_consumpt_best_IQR75), sep = "-") %>% 
+  unite("Daily consumption Top 50% IQR", c(med_daily_consumpt_top50_IQR25, med_daily_consumpt_top50_IQR75), sep = "-")
+
+
+summ_EnDens_krill <- d_strapped %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  group_by(Species, Region) %>% 
+  # Daily energy intake in gigajoules (GJ)
+  summarise(
+    med_daily_En_hyp_low = round(median(EnDens_hyp_low/1e6),2),
+    med_daily_En_hyp_low_IQR25 = round(quantile(EnDens_hyp_low/1e6, probs = 0.25, na.rm = TRUE), 2),
+    med_daily_En_hyp_low_IQR75 = round(quantile(EnDens_hyp_low/1e6, probs = 0.75, na.rm = TRUE), 2),
+    med_daily_En_best = round(median(EnDens_best_low/1e6), 2),
+    med_daily_En_best_IQR25 = round(quantile(EnDens_best_low/1e6, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_En_best_IQR75 = round(quantile(EnDens_best_low/1e6, probs = 0.75, na.rm = TRUE), 2), 
+    med_daily_En_top50 = round(median(EnDens_best_upper/1e6), 2),
+    med_daily_En_top50_IQR25 = round(quantile(EnDens_best_upper/1e6, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_En_top50_IQR75 = round(quantile(EnDens_best_upper/1e6, probs = 0.75, na.rm = TRUE), 2)) %>% 
+  unite("Daily energy intake (GJ) lower estimate IQR", c(med_daily_En_hyp_low_IQR25, med_daily_En_hyp_low_IQR75), sep = "-") %>% 
+  unite("Daily energy intake (GJ) IQR", c(med_daily_En_best_IQR25, med_daily_En_best_IQR75), sep = "-") %>% 
+  unite("Daily energy intake (GJ) Top 50% IQR", c(med_daily_En_top50_IQR25, med_daily_En_top50_IQR75), sep = "-")
 
 
 
@@ -695,7 +743,7 @@ Daily_rate <- d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Daily_rate
 
-dev.copy2pdf(file="Daily_rate_nonAntarctic.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_rate_Antarctic.pdf", width=16, height=6)
 
 
 Daily_filtration <-  d_strapped %>% 
@@ -717,34 +765,43 @@ Daily_filtration <-  d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Daily_filtration
 
-dev.copy2pdf(file="Daily_filtration_nonAntarctic.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_filtration_Antarctic.pdf", width=16, height=6)
 
+
+
+
+d_strapped <- d_strapped %>%
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis"))
+
+# d_strapped <- d_strapped %>% 
+#   mutate(Species = fct_reorder(factor(abbr_binom(Species)), 
+#                                prey_mass_per_day_best_upper_kg))
 
 Daily_biomass_ingested <- d_strapped %>% 
   filter(daily_rate >5,
          prey_general == "Krill") %>% 
   ggplot() +
   #hyp-low
-  # geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_hyp_low_kg), y = prey_mass_per_day_hyp_low_kg/1000,
-  #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
-  # geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_hyp_low_kg), y = prey_mass_per_day_hyp_low_kg/1000,
-  #                  fill = abbr_binom(Species)), color = "gray20", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1,
+  # geom_flat_violin(aes(x = Species, y = prey_mass_per_day_hyp_low_kg/1000,
+  #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .5, adjust = 2) +
+  # geom_boxplot(aes(x = Species, y = prey_mass_per_day_hyp_low_kg/1000,
+  #                  fill = abbr_binom(Species)), color = "gray20", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
   #              position = position_nudge(x = -0.12, y = 0)) +
   #best-low *our best estimate*
-  geom_flat_violin(aes(x = fct_relevel(abbr_binom(Species), "Megaptera novaeangliae"), y = prey_mass_per_day_best_low_kg/1000, 
-                       fill = abbr_binom(Species)), position = position_nudge(x = 0.2, y = 0), alpha = 1, adjust = 2) +
-  geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), "Megaptera novaeangliae"), y = prey_mass_per_day_best_low_kg/1000, 
-                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.8,
+  geom_flat_violin(aes(x = Species, y = prey_mass_per_day_best_low_kg/1000,
+                       fill = Species), position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = Species, y = prey_mass_per_day_best_low_kg/1000,
+                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
                position = position_nudge(x = 0.12, y = 0)) +
   #best-upper
-  # geom_flat_violin(aes(x = fct_relevel(abbr_binom(Species), "B. musculus"), y = prey_mass_per_day_best_upper_kg/1000,
-  #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .4, adjust = 2) +
-  # geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_mass_per_day_best_upper_kg), y = prey_mass_per_day_best_upper_kg/1000,
-  #                  fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.1) +
+  geom_flat_violin(aes(x = Species, y = prey_mass_per_day_best_upper_kg/1000,
+                       fill = Species), position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = abbr_binom(Species), y = prey_mass_per_day_best_upper_kg/1000,
+                   fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
   #ylim(0,100) +
   coord_flip() +
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.1,100), breaks = c(0,1,10,25,50, 75)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 25), breaks = c(0,1,5,10,25)) +
   labs(x = "Species",
        y = bquote('Estimated prey consumed'~(tonnes~d^-1))) +
   theme_classic(base_size = 24) +
@@ -753,17 +810,17 @@ Daily_biomass_ingested <- d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Daily_biomass_ingested
 
-dev.copy2pdf(file="Daily_biomass_ingested_nonAntarctic.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_biomass_ingested_Antarctic.pdf", width=16, height=6)
 
 
-Fig_2_nonAntarctic <- ggarrange(Daily_rate, Daily_filtration, Daily_biomass_ingested, 
-          labels = c("D", "E", "F"), # THIS IS SO COOL!!
+Fig_2_Antarctic <- ggarrange(Daily_rate, Daily_filtration, Daily_biomass_ingested, 
+          labels = c("A", "B", "C"), # THIS IS SO COOL!!
           font.label = list(size = 18),
           legend = "none",
           ncol = 1, nrow = 3)
-Fig_2_nonAntarctic
+Fig_2_Antarctic
 
-dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
+dev.copy2pdf(file="Fig_2_Antarctic.pdf", width=12, height=18)
 
 
 
@@ -772,6 +829,7 @@ pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. eden
 
 Yearly_filtration <-  d_strapped %>% 
   filter(daily_rate >5,
+         Region == "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
   mutate(filtration60 = measured_engulfment_cap_m3*daily_rate*60,
          filtration90 = measured_engulfment_cap_m3*daily_rate*90,
@@ -808,16 +866,37 @@ Yearly_filtration <-  d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Yearly_filtration
 
-dev.copy2pdf(file="Yearly_filtration.pdf", width=10, height=6)
+dev.copy2pdf(file="Yearly_filtration_Antarctic.pdf", width=10, height=6)
 
+
+
+
+d_strapped <- filtration_master %>% 
+  filter(
+    Region != "Chile",
+    Region == "Antarctic",
+    #!Region %in% c("Chile", "Antarctic"),
+    prey_general == "Krill") %>% 
+  group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
+  group_modify(sample_rates) %>% 
+  ungroup 
+
+d_strapped <- d_strapped %>%
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus"))
 
 Yearly_prey_ingested <-  d_strapped %>% 
   filter(daily_rate >5,
+         Region == "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
-  mutate(prey60 = prey_mass_per_day_best_low_kg*60,
-         prey90 = prey_mass_per_day_best_low_kg*90,
-         prey120 = prey_mass_per_day_best_low_kg*120,
-         prey150 = prey_mass_per_day_best_low_kg*150) %>%
+  
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  mutate(prey60 = prey_mass_per_day_best_kg*60,
+         prey90 = prey_mass_per_day_best_kg*90,
+         prey120 = prey_mass_per_day_best_kg*120,
+         prey150 = prey_mass_per_day_best_kg*150) %>%
   pivot_longer(cols = c("prey60", "prey90", "prey120", "prey150"),
                names_to = "feeding_days",
                values_to = "prey_consumed_yr") %>% 
@@ -830,11 +909,9 @@ Yearly_prey_ingested <-  d_strapped %>%
                                       prey150 = "150 days feeding")) %>% 
 
   ggplot(aes(fill = abbr_binom(Species))) +
-  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), prey_consumed_yr), 
-                       y = prey_consumed_yr/1000), 
+  geom_flat_violin(aes(x =  Species, y = prey_consumed_yr/1000), 
                    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
-  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), prey_consumed_yr), 
-                   y = prey_consumed_yr/1000),
+  geom_boxplot(aes(x = Species, y = prey_consumed_yr/1000),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
   facet_grid(.~feeding_days, scales = "free", space = "free") +
   coord_flip() + 
@@ -849,28 +926,32 @@ Yearly_prey_ingested <-  d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Yearly_prey_ingested
 
-dev.copy2pdf(file="Yearly_prey_ingested.pdf", width=10, height=6)
+dev.copy2pdf(file="Yearly_prey_ingested_Antarctic.pdf", width=10, height=6)
 
 
 
-Fig_3 <- ggarrange(Yearly_filtration, Yearly_prey_ingested, 
+Fig_3_Antarctic <- ggarrange(Yearly_filtration, Yearly_prey_ingested, 
                    labels = c("A", "B"), # THIS IS SO COOL!!
                    font.label = list(size = 16),
                    legend = "none",
                    ncol = 1, nrow = 2)
-Fig_3
+Fig_3_Antarctic
 
-dev.copy2pdf(file="Fig_3.pdf", width=10, height=10)
+dev.copy2pdf(file="Fig_3_Antarctic.pdf", width=10, height=10)
 
 
-# Figure 4 ----
+# Figure 4 filtering ----
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
+d_strapped <- d_strapped %>%
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus"))
 
 # Current population numbers
 Yearly_filtration_curr_pop <-  d_strapped %>% 
-  left_join(pop_data, by = "Species") %>% 
   filter(daily_rate >5,
-         prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
+         #Region == "Antarctic",
+         prey_general == "Krill") %>%   #%in% c("Fish", "Krill"))
+  
   mutate(filtration60 = measured_engulfment_cap_m3*daily_rate*60*`Population estimate (IUCN 2019)`,
          filtration90 = measured_engulfment_cap_m3*daily_rate*90*`Population estimate (IUCN 2019)`,
          filtration120 = measured_engulfment_cap_m3*daily_rate*120*`Population estimate (IUCN 2019)`,
@@ -887,13 +968,11 @@ Yearly_filtration_curr_pop <-  d_strapped %>%
                                         filtration150 = "150 days filtering")) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
-  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                       y = water_filtered_yr/1000), 
+  geom_flat_violin(aes(x = fct_reorder(Species, water_filtered_yr), y = water_filtered_yr/1e9),
                    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
-  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                   y = water_filtered_yr/1000),
+  geom_boxplot(aes(x = fct_reorder(Species, water_filtered_yr), y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 1.3324e9, linetype = "dashed") +  # the total volume of water in the ocean
+ # geom_hline(yintercept = 1.3324e9, linetype = "dashed") +  # the total volume of water in the ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -912,10 +991,12 @@ dev.copy2pdf(file="Yearly_filtration_curr_pop.pdf", width=10, height=6)
 #Historical numbers
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
+
 Yearly_filtration_hist_pop <-  d_strapped %>% 
-  left_join(pop_data, by = "Species") %>% 
   filter(daily_rate >5,
-         prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
+         #Region == "Antarctic",
+         prey_general == "Krill") %>%   #%in% c("Fish", "Krill"))
+  
   mutate(filtration60 = measured_engulfment_cap_m3*daily_rate*60*`Historical estimate`,
          filtration90 = measured_engulfment_cap_m3*daily_rate*90*`Historical estimate`,
          filtration120 = measured_engulfment_cap_m3*daily_rate*120*`Historical estimate`,
@@ -932,13 +1013,11 @@ Yearly_filtration_hist_pop <-  d_strapped %>%
                                         filtration150 = "150 days filtering")) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
-  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                       y = water_filtered_yr/1e9), 
+  geom_flat_violin(aes(x = fct_reorder(Species, water_filtered_yr), y = water_filtered_yr/1e9),
                    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
-  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
-                   y = water_filtered_yr/1e9),
+  geom_boxplot(aes(x = fct_reorder(Species, water_filtered_yr), y = water_filtered_yr/1e9),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 133240000, linetype = "dashed") +  # the total volume of water in the ocean
+  #geom_hline(yintercept = 1.3324e9, linetype = "dashed") +  # the total volume of water in the ocean
   facet_grid(.~filtering_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -950,6 +1029,7 @@ Yearly_filtration_hist_pop <-  d_strapped %>%
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.text.y = element_text(face = "italic"))
 Yearly_filtration_hist_pop
+
 
 dev.copy2pdf(file="Yearly_filtration_hist_pop.pdf", width=10, height=6)
 
@@ -964,14 +1044,47 @@ Fig_4_filtering
 dev.copy2pdf(file="Fig_4_filtering.pdf", width=11, height=12)
 
 
-Yearly_krill_ingested_curr_pop <-  d_strapped %>% 
+# Figure 4 prey consumption ----
+
+# CURRENT ANNUAL PREY CONSUMPTION, ANTARCTICA
+Ant_prey_projection <- filtration_master %>% 
+  mutate(
+    Region = case_when(SpeciesCode %in% c("bp", "bw") ~ "Antarctic"),
+    prey_best_low_lnmean = case_when(SpeciesCode %in% c("bp", "bw") ~ -1.837043),   #using values from Antarctic humpbacks
+    prey_best_low_lnsd = case_when(SpeciesCode %in% c("bp", "bw") ~ 0.5824221),
+    prey_best_upper_lnmean = case_when(SpeciesCode %in% c("bp", "bw") ~ -1.385820),
+    prey_best_upper_lnsd = case_when(SpeciesCode %in% c("bp", "bw") ~ 0.3283333)
+  )
+
+
+d_strapped_Ant_projection <- Ant_prey_projection %>% 
+  filter(
+    SpeciesCode %in% c("bw", "bp"),
+    #Region == "Antarctic",
+    prey_general == "Krill") %>% 
+  group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
+  group_modify(sample_rates) %>% 
+  ungroup %>% 
   left_join(pop_data, by = "Species") %>% 
+  bind_rows(filter(d_strapped, Region == "Antarctic"))
+
+
+d_strapped <- d_strapped %>%
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus"))
+
+
+Yearly_krill_ingested_curr_pop_Antarctic <-  d_strapped_Ant_projection %>% 
   filter(daily_rate >5,
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
-  mutate(prey60 = prey_mass_per_day_best_low_kg*`Population estimate (IUCN 2019)`*60,
-         prey90 = prey_mass_per_day_best_low_kg*`Population estimate (IUCN 2019)`*90,
-         prey120 = prey_mass_per_day_best_low_kg*`Population estimate (IUCN 2019)`*120,
-         prey150 = prey_mass_per_day_best_low_kg*`Population estimate (IUCN 2019)`*150) %>%
+  #taking the average of Dave's two distributions
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  mutate(prey60 = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*60,
+         prey90 = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*90,
+         prey120 = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*120,
+         prey150 = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*150) %>%
   pivot_longer(cols = c("prey60", "prey90", "prey120", "prey150"),
                names_to = "feeding_days",
                values_to = "prey_consumed_yr") %>% 
@@ -982,9 +1095,9 @@ Yearly_krill_ingested_curr_pop <-  d_strapped %>%
                                       prey90 = "90 days feeding", 
                                       prey120 = "120 days feeding", 
                                       prey150 = "150 days feeding"),
-         krill_consumed_yr = case_when(Species == "Balaenoptera physalus" ~ prey_consumed_yr*0.8,
+         krill_consumed_yr = case_when(Species == "Balaenoptera physalus" ~ prey_consumed_yr, 
                                        Species == "Balaenoptera musculus" ~ prey_consumed_yr,
-                                       Species == "Megaptera novaeangliae" ~ prey_consumed_yr*0.55,
+                                       Species == "Megaptera novaeangliae" ~ prey_consumed_yr,
                                        Species == "Balaenoptera bonaerensis" ~ prey_consumed_yr)) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
@@ -999,25 +1112,44 @@ Yearly_krill_ingested_curr_pop <-  d_strapped %>%
   scale_fill_manual(values = pal) +
   scale_y_log10() +
   labs(x = "Species",
-       y = bquote('Estimated prey consumed by current populations'~(tonnes~yr^-1))) + 
+       y = bquote('Estimated krill consumed by current populations'~(tonnes~yr^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.text.y = element_text(face = "italic"))
-Yearly_krill_ingested_curr_pop
+Yearly_krill_ingested_curr_pop_Antarctic
 
-dev.copy2pdf(file="Yearly_krill_ingested_curr_pop.pdf", width=10, height=6)
+dev.copy2pdf(file="Yearly_krill_ingested_curr_pop_Antarctic.pdf", width=10, height=6)
 
 
 
-Yearly_krill_ingested_hist_pop <-  d_strapped %>% 
-  left_join(pop_data, by = "Species") %>% 
+# CURRENT ANNUAL PREY CONSUMPTION, NON-ANTARCTICA
+d_strapped <- filtration_master %>% 
+  filter(
+    #Region == "Antarctic",
+    !Region %in% c("Chile", "Antarctic"),
+    prey_general == "Krill") %>% 
+  group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
+  group_modify(sample_rates) %>% 
+  ungroup %>% 
+  left_join(pop_data, by = "Species")
+
+d_strapped <- d_strapped %>%
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae",  "B. physalus"))
+
+
+Yearly_krill_ingested_curr_pop_nonAntarctic <-  d_strapped %>% 
   filter(daily_rate >5,
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
-  mutate(prey60 = prey_mass_per_day_best_low_kg*`Historical estimate`*60,
-         prey90 = prey_mass_per_day_best_low_kg*`Historical estimate`*90,
-         prey120 = prey_mass_per_day_best_low_kg*`Historical estimate`*120,
-         prey150 = prey_mass_per_day_best_low_kg*`Historical estimate`*150) %>%
+  #taking the average of Dave's two distributions
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  mutate(prey60 = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*60,
+         prey90 = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*90,
+         prey120 = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*120,
+         prey150 = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*150) %>%
   pivot_longer(cols = c("prey60", "prey90", "prey120", "prey150"),
                names_to = "feeding_days",
                values_to = "prey_consumed_yr") %>% 
@@ -1028,9 +1160,70 @@ Yearly_krill_ingested_hist_pop <-  d_strapped %>%
                                       prey90 = "90 days feeding", 
                                       prey120 = "120 days feeding", 
                                       prey150 = "150 days feeding"),
-         krill_consumed_yr = case_when(Species == "Balaenoptera physalus" ~ prey_consumed_yr*0.8,
+         krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
+                                       Species == "B. musculus" ~ prey_consumed_yr,
+                                       Species == "M. novaeangliae" ~ prey_consumed_yr*0.55,
+                                       Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
+  
+  ggplot(aes(fill = Species)) +
+  geom_flat_violin(aes(x = Species, 
+                       y = krill_consumed_yr/1000), 
+                   position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(aes(x = Species, 
+                   y = krill_consumed_yr/1000),
+               width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  facet_grid(.~feeding_days, scales = "free", space = "free") +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10() +
+  labs(x = "Species",
+       y = bquote('Estimated krill consumed by current populations'~(tonnes~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Yearly_krill_ingested_curr_pop_nonAntarctic
+
+dev.copy2pdf(file="Yearly_krill_ingested_curr_pop_nonAntarctic.pdf", width=10, height=6)
+
+
+Fig_4_krill_consume_curr_pop <- ggarrange(Yearly_krill_ingested_curr_pop_Antarctic, Yearly_krill_ingested_curr_pop_nonAntarctic,
+                           labels = c("A", "B"), # THIS IS SO COOL!!
+                           font.label = list(size = 18),
+                           legend = "none",
+                           ncol = 1, nrow = 2)
+Fig_4_krill_consume_curr_pop
+
+dev.copy2pdf(file="Fig_4_krill_consume_curr_pop.pdf", width=11, height=12)
+
+
+
+# PRE-EXPLOITATION ANNUAL PREY CONSUMPTION, ANTARCTICA
+Yearly_krill_ingested_hist_pop_Antarctic <-  d_strapped_Ant_projection %>% 
+  filter(daily_rate >5,
+         prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
+  #taking the average of Dave's two distributions
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  mutate(prey60 = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*60,
+         prey90 = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*90,
+         prey120 = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*120,
+         prey150 = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*150) %>%
+  pivot_longer(cols = c("prey60", "prey90", "prey120", "prey150"),
+               names_to = "feeding_days",
+               values_to = "prey_consumed_yr") %>% 
+  
+  mutate(feeding_days = factor(feeding_days),
+         feeding_days = recode_factor(feeding_days, 
+                                      prey60 = "60 days feeding", 
+                                      prey90 = "90 days feeding", 
+                                      prey120 = "120 days feeding", 
+                                      prey150 = "150 days feeding"),
+         krill_consumed_yr = case_when(Species == "Balaenoptera physalus" ~ prey_consumed_yr, 
                                        Species == "Balaenoptera musculus" ~ prey_consumed_yr,
-                                       Species == "Megaptera novaeangliae" ~ prey_consumed_yr*0.55,
+                                       Species == "Megaptera novaeangliae" ~ prey_consumed_yr,
                                        Species == "Balaenoptera bonaerensis" ~ prey_consumed_yr)) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
@@ -1040,36 +1233,103 @@ Yearly_krill_ingested_hist_pop <-  d_strapped %>%
   geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), krill_consumed_yr), 
                    y = krill_consumed_yr/1000),
                width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  #geom_hline(yintercept = 2.9e5, linetype = "dashed", color = "red") +  # total krill fishery catch from 2018
+  geom_hline(yintercept = 3.79e8, linetype = "dashed") +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
   facet_grid(.~feeding_days, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
   scale_y_log10() +
   labs(x = "Species",
-       y = bquote('Estimated prey consumed by pre-exploitation populations'~(tonnes~yr^-1))) + 
+       y = bquote('Estimated krill consumed by pre-exploitation populations'~(tonnes~yr^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.text.y = element_text(face = "italic"))
-Yearly_krill_ingested_hist_pop 
+Yearly_krill_ingested_hist_pop_Antarctic
 
-dev.copy2pdf(file="Yearly_prey_ingested_hist_pop.pdf", width=10, height=6)
-
-
+dev.copy2pdf(file="Yearly_krill_ingested_hist_pop_Antarctic.pdf", width=10, height=6)
 
 
-Fig_4_feeding <- ggarrange(Yearly_krill_ingested_curr_pop, Yearly_krill_ingested_hist_pop,
+
+# PRE-EXPLOITATION ANNUAL PREY CONSUMPTION, NON-ANTARCTICA
+d_strapped <- d_strapped %>%
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. musculus", "B. physalus"))
+
+
+Yearly_krill_ingested_hist_pop_nonAntarctic <-  d_strapped %>% 
+  filter(daily_rate >5,
+         prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
+  #taking the average of Dave's two distributions
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  mutate(prey60 = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*60,
+         prey90 = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*90,
+         prey120 = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*120,
+         prey150 = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*150) %>%
+  pivot_longer(cols = c("prey60", "prey90", "prey120", "prey150"),
+               names_to = "feeding_days",
+               values_to = "prey_consumed_yr") %>% 
+  
+  mutate(feeding_days = factor(feeding_days),
+         feeding_days = recode_factor(feeding_days, 
+                                      prey60 = "60 days feeding", 
+                                      prey90 = "90 days feeding", 
+                                      prey120 = "120 days feeding", 
+                                      prey150 = "150 days feeding"),
+         krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
+                                       Species == "B. musculus" ~ prey_consumed_yr,
+                                       Species == "M. novaeangliae" ~ prey_consumed_yr*0.55,
+                                       Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
+  
+  ggplot(aes(fill = Species)) +
+  geom_flat_violin(aes(x = Species, 
+                       y = krill_consumed_yr/1000), 
+                   position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(aes(x = Species, 
+                   y = krill_consumed_yr/1000),
+               width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  facet_grid(.~feeding_days, scales = "free", space = "free") +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10() +
+  labs(x = "Species",
+       y = bquote('Estimated krill consumed by pre-exploitation populations'~(tonnes~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Yearly_krill_ingested_hist_pop_nonAntarctic
+
+dev.copy2pdf(file="Yearly_krill_ingested_hist_pop_nonAntarctic.pdf", width=10, height=6)
+
+
+Fig_4_krill_consume_hist_pop <- ggarrange(Yearly_krill_ingested_hist_pop_Antarctic, Yearly_krill_ingested_hist_pop_nonAntarctic,
                    labels = c("C", "D"), # THIS IS SO COOL!!
                    font.label = list(size = 18),
                    legend = "none",
                    ncol = 1, nrow = 2)
-Fig_4_feeding
+Fig_4_krill_consume_hist_pop
 
-dev.copy2pdf(file="Fig_4_feeding.pdf", width=11, height=12)
-
-
+dev.copy2pdf(file="Fig_4_krill_consume_hist_pop.pdf", width=11, height=12)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Old code below here ----
 
 
 # Figure 4 Southern Hemisphere krill feeding populations ----
@@ -1286,15 +1546,9 @@ dev.copy2pdf(file="Yearly_krill_ingested_SH_pop.pdf", width=11, height=12)
 
 
 
-
-
 ##################################
 # Create prey consumption function
 ##################################
-
-
-
-# Old code below here ----
 
 
 
