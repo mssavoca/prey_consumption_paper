@@ -384,10 +384,10 @@ sample_rates <- function(rows, keys) {
     }, error = function(e) browser())
   }
   
-  mass_per_day <- function(rate, capacity, lnmean, lnsd) {
-    densities <- rlnorm(rate, lnmean, lnsd)
-    sum(capacity * densities)
-  }
+  # mass_per_day <- function(rate, capacity, lnmean, lnsd) {
+  #   densities <- rlnorm(rate, lnmean, lnsd)
+  #   sum(capacity * densities)
+  # }
   
   mass_per_day <- function(rate, capacity) {
     densities <- rnorm(rate, 7.8*0.4, 7.8*0.1)
@@ -404,17 +404,10 @@ sample_rates <- function(rows, keys) {
                    length_distrib = sample_length(keys$SpeciesCode, sz),
                    slope = rows$slope[1],
                    intercept = rows$intercept[1],
-                   measured_engulfment_cap_m3 = (length_distrib ^ slope * 10 ^ intercept * 0.9766)/1000)
-                   # prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day,
-                   #                                         lnmean = rows$prey_hyp_low_lnmean[1],
-                   #                                         lnsd = rows$prey_hyp_low_lnsd[1]),
-                   # prey_mass_per_day_best_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
-                   #                                          lnmean = rows$prey_best_low_lnmean[1], 
-                   #                                          lnsd = rows$prey_best_low_lnsd[1]),
-                   # prey_mass_per_day_best_upper_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
-                   #                                            lnmean = rows$prey_best_upper_lnmean[1], 
-                   #                                            lnsd = rows$prey_best_upper_lnsd[1]),
-                   # prey_mass_per_lunge = prey_mass_per_day_best_low_kg / daily_rate)
+                   measured_engulfment_cap_m3 = (length_distrib ^ slope * 10 ^ intercept * 0.9766)/1000,
+                   prey_mass_fish_best_kg =  map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day),
+                   prey_mass_fish_low_kg = prey_mass_fish_best_kg*0.29,  #	Conservative assumption that average anchovy school is 0.29 of a humpback whale’s maximum engulfment capacity (from Cade PNAS).
+                   prey_mass_fish_per_lunge_kg  = prey_mass_fish_best_kg / daily_rate)
 }
 
 d_strapped_fish <- filtration_master_fish %>% 
@@ -422,6 +415,52 @@ d_strapped_fish <- filtration_master_fish %>%
   group_modify(sample_rates) %>% 
   ungroup %>% 
   left_join(pop_data, by = "Species")
+
+#Adding in krill energy density in kJ/kg; see scaling paper supplement
+d_strapped_fish <-  d_strapped_fish %>% 
+  mutate(EnDens_best = prey_mass_fish_best_kg * 5400,
+         EnDens_low = prey_mass_fish_low_kg * 5400)
+
+# Summary tables fish ----
+
+summ_stats_fish <- d_strapped_fish %>% 
+  filter(Species !="Balaenoptera physalus") %>% 
+  group_by(Species, Region) %>% 
+  summarise(
+    `Lunges per day` = median(daily_rate),
+    Daily_rate_IQR25 = round(quantile(daily_rate, probs = 0.25, na.rm = TRUE), 2), 
+    Daily_rate_IQR75 = round(quantile(daily_rate, probs = 0.75, na.rm = TRUE), 2),
+    `Water filtered per day` = median(measured_engulfment_cap_m3*daily_rate),
+    Water_filtered_IQR25 = round(quantile(measured_engulfment_cap_m3*daily_rate, probs = 0.25, na.rm = TRUE), 2), 
+    Water_filtered_IQR75 = round(quantile(measured_engulfment_cap_m3*daily_rate, probs = 0.75, na.rm = TRUE), 2)) %>% 
+  unite("Lunges per day IQR", c(Daily_rate_IQR25, Daily_rate_IQR75), sep = "-") %>% 
+  unite("Water filtered per day IQR", c(Water_filtered_IQR25, Water_filtered_IQR75), sep = "-")
+
+
+summ_fish_prey_stats <- d_strapped_fish %>% 
+  group_by(Species, Region) %>% 
+  filter(SpeciesCode != "bp") %>% 
+  summarise(
+    # Daily fish consumption in kg
+    med_daily_fish_consumpt_low = round(median(prey_mass_fish_low_kg), 2),
+    med_daily_fish_consumpt_low_IQR25 = round(quantile(prey_mass_fish_low_kg, probs = 0.25, na.rm = TRUE), 2),
+    med_daily_fish_consumpt_low_IQR75 = round(quantile(prey_mass_fish_low_kg, probs = 0.75, na.rm = TRUE), 2),
+    med_daily_fish_consumpt_best = round(median(prey_mass_fish_best_kg), 2),
+    med_daily_fish_consumpt_best_IQR25 = round(quantile(prey_mass_fish_best_kg, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_fish_consumpt_best_IQR75 = round(quantile(prey_mass_fish_best_kg, probs = 0.75, na.rm = TRUE), 2),
+    # Daily energy intake from fish in gigajoules (GJ)
+    med_daily_fish_En_low = round(median(EnDens_low/1e6), 2),
+    med_daily_fish_En_low_IQR25 = round(quantile(EnDens_low/1e6, probs = 0.25, na.rm = TRUE), 2),
+    med_daily_fish_En_low_IQR75 = round(quantile(EnDens_low/1e6, probs = 0.75, na.rm = TRUE), 2),
+    med_daily_fish_En_best = round(median(EnDens_best/1e6), 2),
+    med_daily_fish_En_best_IQR25 = round(quantile(EnDens_best/1e6, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_fish_En_best_IQR75 = round(quantile(EnDens_best/1e6, probs = 0.75, na.rm = TRUE), 2)) %>% 
+  unite("Daily consumption lower estimate IQR", c(med_daily_fish_consumpt_low_IQR25, med_daily_fish_consumpt_low_IQR75), sep = "-") %>% 
+  unite("Daily consumption best IQR", c(med_daily_fish_consumpt_best_IQR25, med_daily_fish_consumpt_best_IQR75), sep = "-") %>% 
+  unite("Daily energy intake (GJ) low IQR", c(med_daily_fish_En_low_IQR25, med_daily_fish_En_low_IQR75), sep = "-") %>% 
+  unite("Daily energy intake (GJ) best IQR", c(med_daily_fish_En_best_IQR25, med_daily_fish_En_best_IQR75), sep = "-")
+
+
 
 
 
@@ -443,7 +482,7 @@ Daily_rate_fish <- d_strapped_fish %>%
   labs(x = "Species",
        y = bquote('Estimated feeding rate'~(lunges~ind^-1~d^-1))) + 
   #ylim(0, 2000) +
-  scale_y_log10(labels = scales::comma, breaks = c(10,100,250,500,1000)) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 500), breaks = c(10,50,100,250,500)) +
   theme_classic(base_size = 24) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
@@ -476,63 +515,155 @@ dev.copy2pdf(file="Daily_filtration_fish.pdf", width=16, height=6)
 
 
 
-Daily_biomass_ingested_nonAntarctic <- d_strapped %>% 
+Daily_biomass_ingested_fish <- d_strapped_fish %>% 
   filter(daily_rate >5,
-         Region != "Antarctic",
-         prey_general == "Krill") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus")) %>% 
+         SpeciesCode != "bp") %>% 
   
   #taking the average of Dave's two distributions
-  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
-               names_to = "best_prey_est",
-               values_to = "prey_mass_per_day_best_kg") %>% 
+  # pivot_longer(cols = c(prey_mass_fish_low_kg, prey_mass_fish_best_kg),
+  #              names_to = "best_prey_est",
+  #              values_to = "prey_mass_per_day_best_kg") %>% 
   
-  ggplot() +
-  #hyp-low
-  # geom_flat_violin(aes(x = Species, y = prey_mass_per_day_hyp_low_kg/1000,
-  #                      fill = abbr_binom(Species)), color = NA, position = position_nudge(x = 0.2, y = 0), alpha = .5, adjust = 2) +
-  # geom_boxplot(aes(x = Species, y = prey_mass_per_day_hyp_low_kg/1000,
-  #                  fill = abbr_binom(Species)), color = "gray20", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
-  #              position = position_nudge(x = -0.12, y = 0)) +
-  # #best-low *our best estimate*
-  # geom_flat_violin(aes(x = Species, y = prey_mass_per_day_best_low_kg/1000,
-  #                      fill = Species), position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
-  # geom_boxplot(aes(x = Species, y = prey_mass_per_day_best_low_kg/1000,
-  #                  fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
-#              position = position_nudge(x = 0.12, y = 0)) +
-# #best-upper
-# geom_flat_violin(aes(x = Species, y = prey_mass_per_day_best_upper_kg/1000,
-#                      fill = Species), position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
-# geom_boxplot(aes(x = abbr_binom(Species), y = prey_mass_per_day_best_upper_kg/1000,
-#                  fill = abbr_binom(Species)), color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  ggplot(aes(fill = abbr_binom(Species))) +
+  #best-low *our best estimate*
+  geom_flat_violin(aes(x = abbr_binom(Species), y = prey_mass_fish_low_kg/1000), 
+                   position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = abbr_binom(Species), y = prey_mass_fish_low_kg/1000), 
+               width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
+               position = position_nudge(x = 0.12, y = 0)) +
+  # #best-upper
+  geom_flat_violin(aes(x = abbr_binom(Species), y = prey_mass_fish_best_kg/1000), 
+                   position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = abbr_binom(Species), y = prey_mass_fish_best_kg/1000), 
+               color = "red", width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
 
 #best *our best estimate, average of best low and best upper*
-geom_flat_violin(aes(x = Species, y = prey_mass_per_day_best_kg/1000,
-                     fill = Species), position = position_nudge(x = 0.2, y = 0), alpha = 0.8, adjust = 2) +
-  geom_boxplot(aes(x = Species, y = prey_mass_per_day_best_kg/1000,
-                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
-               position = position_nudge(x = 0.12, y = 0)) +
+# geom_flat_violin(aes(x = Species, y = prey_mass_per_day_best_kg/1000,
+#                      fill = Species), position = position_nudge(x = 0.2, y = 0), alpha = 0.8, adjust = 2) +
+#   geom_boxplot(aes(x = Species, y = prey_mass_per_day_best_kg/1000,
+#                    fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
+#                position = position_nudge(x = 0.12, y = 0)) +
   #ylim(0,100) +
   coord_flip() +
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.1, 50), breaks = c(0,1,5,10,25, 50)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 40), breaks = c(0,1,5,10,25)) +
   labs(x = "Species",
        y = bquote('Estimated prey consumed'~(tonnes~ind^-1~d^-1))) +
   theme_classic(base_size = 24) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.text.y = element_text(face = "italic"))
-Daily_biomass_ingested_nonAntarctic
+Daily_biomass_ingested_fish
 
-dev.copy2pdf(file="Daily_biomass_ingested_nonAntarctic.pdf", width=16, height=6)
+dev.copy2pdf(file="Daily_biomass_ingested_fish.pdf", width=16, height=6)
 
 
-Fig_2_nonAntarctic <- ggarrange(Daily_rate_nonAntarctic, Daily_filtration_nonAntarctic, Daily_biomass_ingested_nonAntarctic, 
+Fig_2_fish <- ggarrange(Daily_rate_fish, Daily_filtration_fish, Daily_biomass_ingested_fish, 
                                 labels = c("D", "E", "F"), # THIS IS SO COOL!!
                                 font.label = list(size = 18),
                                 legend = "none",
                                 ncol = 1, nrow = 3)
-Fig_2_nonAntarctic
+Fig_2_fish
 
-dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
+dev.copy2pdf(file="Fig_2_fish.pdf", width=12, height=18)
 
+
+
+# Figure 3 fish----
+pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
+Yearly_filtration_fish <-  d_strapped_fish %>% 
+  filter(daily_rate >5,
+         SpeciesCode != "bp") %>%   
+  mutate(filtration60 = measured_engulfment_cap_m3*daily_rate*60,
+         filtration90 = measured_engulfment_cap_m3*daily_rate*90,
+         filtration120 = measured_engulfment_cap_m3*daily_rate*120,
+         filtration150 = measured_engulfment_cap_m3*daily_rate*150) %>%
+  pivot_longer(cols = starts_with("filt"),
+               names_to = "filtering_days",
+               names_prefix = "wk",
+               values_to = "water_filtered_yr") %>% 
+  mutate(filtering_days = factor(filtering_days),
+         filtering_days = recode_factor(filtering_days, 
+                                        filtration60 = "60 days filtering", 
+                                        filtration90 = "90 days filtering", 
+                                        filtration120 = "120 days filtering", 
+                                        filtration150 = "150 days filtering")) %>% 
+  
+  ggplot(aes(fill = abbr_binom(Species))) +
+  geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
+                       y = water_filtered_yr), 
+                   position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(aes(x = fct_reorder(abbr_binom(Species), water_filtered_yr), 
+                   y = water_filtered_yr),
+               width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  facet_grid(.~filtering_days, scales = "free", space = "free") +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  #ylim(0,60000) +
+  labs(x = "Species",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Yearly_filtration_fish
+
+dev.copy2pdf(file="Yearly_filtration_fish.pdf", width=10, height=6)
+
+
+
+Yearly_prey_ingested_fish <-  d_strapped_fish %>% 
+  filter(daily_rate >5,
+         SpeciesCode != "bp") %>% 
+  
+  pivot_longer(cols = c(prey_mass_fish_low_kg, prey_mass_fish_best_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  mutate(prey60 = prey_mass_per_day_best_kg*60,
+         prey90 = prey_mass_per_day_best_kg*90,
+         prey120 = prey_mass_per_day_best_kg*120,
+         prey150 = prey_mass_per_day_best_kg*150) %>%
+  pivot_longer(cols = c("prey60", "prey90", "prey120", "prey150"),
+               names_to = "feeding_days",
+               values_to = "prey_consumed_yr") %>% 
+  
+  mutate(feeding_days = factor(feeding_days),
+         feeding_days = recode_factor(feeding_days, 
+                                      prey60 = "60 days feeding", 
+                                      prey90 = "90 days feeding", 
+                                      prey120 = "120 days feeding", 
+                                      prey150 = "150 days feeding")) %>% 
+  
+  ggplot(aes(fill = abbr_binom(Species))) +
+  geom_flat_violin(aes(x =  abbr_binom(Species), y = prey_consumed_yr/1000), 
+                   position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(aes(x = abbr_binom(Species), y = prey_consumed_yr/1000),
+               width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  facet_grid(.~feeding_days, scales = "free", space = "free") +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  #ylim(0,60000) +
+  labs(x = "Species",
+       y = bquote('Estimated fish consumed'~(tonnes~ind^-1~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Yearly_prey_ingested_fish
+
+dev.copy2pdf(file="Yearly_prey_ingested_fish.pdf", width=10, height=6)
+
+
+
+Fig_3_fish <- ggarrange(Yearly_filtration_fish, Yearly_prey_ingested_fish, 
+                             labels = c("A", "B"), # THIS IS SO COOL!!
+                             font.label = list(size = 16),
+                             legend = "none",
+                             ncol = 1, nrow = 2)
+Fig_3_fish
+
+dev.copy2pdf(file="Fig_3_fish.pdf", width=10, height=10)

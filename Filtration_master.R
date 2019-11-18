@@ -666,7 +666,7 @@ summ_prey_stats <- d_strapped %>%
   filter(!Region %in% c("North Atlantic", "Chile")) %>% 
   group_by(Species, Region) %>% 
   summarise(
-    med_daily_consumpt_hyp_low = median(prey_mass_per_day_hyp_low_kg),
+    med_daily_consumpt_hyp_low = round(median(prey_mass_per_day_hyp_low_kg), 2),
     med_daily_consumpt_hyp_low_IQR25 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.25, na.rm = TRUE), 2),
     med_daily_consumpt_hyp_low_IQR75 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.75, na.rm = TRUE), 2),
     med_daily_consumpt_best = round(median(prey_mass_per_day_best_low_kg), 2),
@@ -954,7 +954,7 @@ pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. eden
 
 Yearly_filtration <-  d_strapped %>% 
   filter(daily_rate >5,
-         Region == "Antarctic",
+         Region != "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
   mutate(filtration60 = measured_engulfment_cap_m3*daily_rate*60,
          filtration90 = measured_engulfment_cap_m3*daily_rate*90,
@@ -984,7 +984,7 @@ Yearly_filtration <-  d_strapped %>%
   scale_y_log10(labels = scales::comma) +
   #ylim(0,60000) +
   labs(x = "Species",
-       y = bquote('Estimated water filtered per individual'~(m^3~yr^-1))) + 
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
@@ -1011,7 +1011,7 @@ d_strapped <- d_strapped %>%
 
 Yearly_prey_ingested <-  d_strapped %>% 
   filter(daily_rate >5,
-         Region == "Antarctic",
+         Region != "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
   
   pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
@@ -1044,7 +1044,7 @@ Yearly_prey_ingested <-  d_strapped %>%
   scale_y_log10(labels = scales::comma) +
   #ylim(0,60000) +
   labs(x = "Species",
-       y = bquote('Estimated prey consumed per individual'~(tonnes~yr^-1))) + 
+       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~yr^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1),
@@ -1055,14 +1055,14 @@ dev.copy2pdf(file="Yearly_prey_ingested_Antarctic.pdf", width=10, height=6)
 
 
 
-Fig_3_Antarctic <- ggarrange(Yearly_filtration, Yearly_prey_ingested, 
-                   labels = c("A", "B"), # THIS IS SO COOL!!
+Fig_3_nonAntarctic <- ggarrange(Yearly_filtration, Yearly_prey_ingested, 
+                   labels = c("C", "D"), # THIS IS SO COOL!!
                    font.label = list(size = 16),
                    legend = "none",
                    ncol = 1, nrow = 2)
-Fig_3_Antarctic
+Fig_3_nonAntarctic
 
-dev.copy2pdf(file="Fig_3_Antarctic.pdf", width=10, height=10)
+dev.copy2pdf(file="Fig_3_nonAntarctic.pdf", width=10, height=10)
 
 
 # Figure 4 filtering ----
@@ -1363,7 +1363,7 @@ Yearly_krill_ingested_hist_pop_Antarctic <-  d_strapped_Ant_projection %>%
         axis.text.y = element_text(face = "italic"))
 Yearly_krill_ingested_hist_pop_Antarctic
 
-dev.copy2pdf(file="Yearly_krill_ingested_hist_pop_Antarctic.pdf", width=10, height=6)
+dev.copy2pdf(file="Yearly_krill_ingested_hist_pop_Antarctic.pdf", width=11, height=6)
 
 
 
@@ -1374,6 +1374,7 @@ d_strapped <- d_strapped %>%
 
 Yearly_krill_ingested_hist_pop_nonAntarctic <-  d_strapped %>% 
   filter(daily_rate >5,
+         Region != "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
   #taking the average of Dave's two distributions
   pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
@@ -1418,7 +1419,7 @@ Yearly_krill_ingested_hist_pop_nonAntarctic <-  d_strapped %>%
         axis.text.y = element_text(face = "italic"))
 Yearly_krill_ingested_hist_pop_nonAntarctic
 
-dev.copy2pdf(file="Yearly_krill_ingested_hist_pop_nonAntarctic.pdf", width=10, height=6)
+dev.copy2pdf(file="Yearly_krill_ingested_hist_pop_nonAntarctic.pdf", width=11, height=6)
 
 
 Fig_4_krill_consume_hist_pop <- ggarrange(Yearly_krill_ingested_hist_pop_Antarctic, Yearly_krill_ingested_hist_pop_nonAntarctic,
@@ -1429,6 +1430,8 @@ Fig_4_krill_consume_hist_pop <- ggarrange(Yearly_krill_ingested_hist_pop_Antarct
 Fig_4_krill_consume_hist_pop
 
 dev.copy2pdf(file="Fig_4_krill_consume_hist_pop.pdf", width=11, height=12)
+
+
 
 
 
