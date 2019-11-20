@@ -720,7 +720,7 @@ Measured_length <- ggplot(d_strapped,
 Measured_length
 
 
-# Figure 2 ----
+# Figure 2 Daily rorqual water filtration krill consumption per individual ----
 
 #ANTARCTIC
 Daily_rate_Antarctic <- d_strapped %>% 
@@ -949,7 +949,7 @@ dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
 
 
 
- # Figure 3 ----
+# Figure 3 Annual rorqual water filtration krill consumption per individual ----
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
 Yearly_filtration <-  d_strapped %>% 
@@ -993,7 +993,28 @@ Yearly_filtration
 
 dev.copy2pdf(file="Yearly_filtration_Antarctic.pdf", width=10, height=6)
 
-
+# Annual individual filtration, summary table
+summ_filt_annual_ind_stats <- Yearly_filtration %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species, Region) %>% 
+  summarise(
+    yr_filt_60days_IQR25 = round(quantile(filtration60, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_60days_IQR75 = round(quantile(filtration60, probs = 0.75, na.rm = TRUE), 0),
+    yr_filt_90days_IQR25 = round(quantile(filtration90, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_90days_IQR75 = round(quantile(filtration90, probs = 0.75, na.rm = TRUE), 0),
+    yr_filt_120days_IQR25 = round(quantile(filtration120, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_120days_IQR75 = round(quantile(filtration120, probs = 0.75, na.rm = TRUE), 0),
+    yr_filt_150days_IQR25 = round(quantile(filtration150, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_150days_IQR75 = round(quantile(filtration150, probs = 0.75, na.rm = TRUE), 0)) %>% 
+  unite("Filtration capacity (m3 ind yr), 60 days feeding, IQR", 
+        c(yr_filt_60days_IQR25, yr_filt_60days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (m3 ind yr), 90 days feeding, IQR", 
+        c(yr_filt_90days_IQR25, yr_filt_90days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (m3 ind yr), 120 days feeding, IQR", 
+        c(yr_filt_120days_IQR25, yr_filt_120days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (m3 ind yr), 150 days feeding, IQR", 
+        c(yr_filt_150days_IQR25, yr_filt_150days_IQR75), sep = "-")
 
 
 d_strapped <- filtration_master %>% 
@@ -1011,7 +1032,7 @@ d_strapped <- d_strapped %>%
 
 Yearly_prey_ingested <-  d_strapped %>% 
   filter(daily_rate >5,
-         Region != "Antarctic",
+         #Region != "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
   
   pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
@@ -1063,6 +1084,29 @@ Fig_3_nonAntarctic <- ggarrange(Yearly_filtration, Yearly_prey_ingested,
 Fig_3_nonAntarctic
 
 dev.copy2pdf(file="Fig_3_nonAntarctic.pdf", width=10, height=10)
+
+# Annual individual krill prey, summary table
+summ_prey_annual_ind_stats <- Yearly_prey_ingested %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species, Region) %>% 
+  summarise(
+    yr_prey_60days_IQR25 = round(quantile(prey60, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_60days_IQR75 = round(quantile(prey60, probs = 0.75, na.rm = TRUE), 0),
+    yr_prey_90days_IQR25 = round(quantile(prey90, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_90days_IQR75 = round(quantile(prey90, probs = 0.75, na.rm = TRUE), 0),
+    yr_prey_120days_IQR25 = round(quantile(prey120, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_120days_IQR75 = round(quantile(prey120, probs = 0.75, na.rm = TRUE), 0),
+    yr_prey_150days_IQR25 = round(quantile(prey150, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_150days_IQR75 = round(quantile(prey150, probs = 0.75, na.rm = TRUE), 0)) %>% 
+  unite("Krill consumption (tonnes ind yr), 60 days feeding, IQR", 
+        c(yr_prey_60days_IQR25, yr_prey_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (tonnes ind yr), 90 days feeding, IQR", 
+        c(yr_prey_90days_IQR25, yr_prey_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (tonnes ind yr), 120 days feeding, IQR", 
+        c(yr_prey_120days_IQR25, yr_prey_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (tonnes ind yr), 150 days feeding, IQR", 
+        c(yr_prey_150days_IQR25, yr_prey_150days_IQR75), sep = "-")
 
 
 # Figure 4 filtering ----

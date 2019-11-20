@@ -613,6 +613,30 @@ Yearly_filtration_fish
 dev.copy2pdf(file="Yearly_filtration_fish.pdf", width=10, height=6)
 
 
+# Annual individual filtration, summary table
+summ_filt_annual_ind_stats <- Yearly_filtration_fish %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species, Region) %>% 
+  summarise(
+    yr_filt_60days_IQR25 = round(quantile(filtration60, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_60days_IQR75 = round(quantile(filtration60, probs = 0.75, na.rm = TRUE), 0),
+    yr_filt_90days_IQR25 = round(quantile(filtration90, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_90days_IQR75 = round(quantile(filtration90, probs = 0.75, na.rm = TRUE), 0),
+    yr_filt_120days_IQR25 = round(quantile(filtration120, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_120days_IQR75 = round(quantile(filtration120, probs = 0.75, na.rm = TRUE), 0),
+    yr_filt_150days_IQR25 = round(quantile(filtration150, probs = 0.25, na.rm = TRUE), 0),
+    yr_filt_150days_IQR75 = round(quantile(filtration150, probs = 0.75, na.rm = TRUE), 0)) %>% 
+  unite("Filtration capacity (m3 ind yr), 60 days feeding, IQR", 
+        c(yr_filt_60days_IQR25, yr_filt_60days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (m3 ind yr), 90 days feeding, IQR", 
+        c(yr_filt_90days_IQR25, yr_filt_90days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (m3 ind yr), 120 days feeding, IQR", 
+        c(yr_filt_120days_IQR25, yr_filt_120days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (m3 ind yr), 150 days feeding, IQR", 
+        c(yr_filt_150days_IQR25, yr_filt_150days_IQR75), sep = "-")
+
+
 
 Yearly_prey_ingested_fish <-  d_strapped_fish %>% 
   filter(daily_rate >5,
@@ -667,3 +691,30 @@ Fig_3_fish <- ggarrange(Yearly_filtration_fish, Yearly_prey_ingested_fish,
 Fig_3_fish
 
 dev.copy2pdf(file="Fig_3_fish.pdf", width=10, height=10)
+
+
+# Annual individual fish prey, summary table
+summ_prey_annual_ind_stats <- Yearly_prey_ingested_fish %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species, Region) %>% 
+  summarise(
+    yr_prey_60days_IQR25 = round(quantile(prey60, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_60days_IQR75 = round(quantile(prey60, probs = 0.75, na.rm = TRUE), 0),
+    yr_prey_90days_IQR25 = round(quantile(prey90, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_90days_IQR75 = round(quantile(prey90, probs = 0.75, na.rm = TRUE), 0),
+    yr_prey_120days_IQR25 = round(quantile(prey120, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_120days_IQR75 = round(quantile(prey120, probs = 0.75, na.rm = TRUE), 0),
+    yr_prey_150days_IQR25 = round(quantile(prey150, probs = 0.25, na.rm = TRUE), 0),
+    yr_prey_150days_IQR75 = round(quantile(prey150, probs = 0.75, na.rm = TRUE), 0)) %>% 
+  unite("Fish consumption (tonnes ind yr), 60 days feeding, IQR", 
+        c(yr_prey_60days_IQR25, yr_prey_60days_IQR75), sep = "-") %>% 
+  unite("Fish consumption (tonnes ind yr), 90 days feeding, IQR", 
+        c(yr_prey_90days_IQR25, yr_prey_90days_IQR75), sep = "-") %>% 
+  unite("Fish consumption (tonnes ind yr), 120 days feeding, IQR", 
+        c(yr_prey_120days_IQR25, yr_prey_120days_IQR75), sep = "-") %>% 
+  unite("Fish consumption (tonnes ind yr), 150 days feeding, IQR", 
+        c(yr_prey_150days_IQR25, yr_prey_150days_IQR75), sep = "-")
+
+
+
