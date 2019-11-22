@@ -248,18 +248,18 @@ pooled_sd_mean <- function(sd1, sd2, n1, n2) {
 
 
 # read in, clean, combine data
-MRY_krill_data <- read_excel("MontereyKrillData.xlsx", sheet = 2) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+MRY_krill_data <- read_csv("MontereyKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bb")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
     Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "Monterey",
     Region = "Eastern North Pacific") %>% 
   rename(SpeciesCode = "Species") 
 
-SoCal_krill_data <- read_excel("SoCalKrillData.xlsx", sheet = 2) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+SoCal_krill_data <- read_csv("SoCalKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bb")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
     Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "SoCal",
@@ -290,18 +290,18 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
   select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
 
 
-WAP_krill_data <- read_excel("AntarcticKrillData.xlsx", sheet = 2) %>% 
+WAP_krill_data <- read_csv("AntarcticKrillData (1).csv") %>% 
+  filter(!Species %in% c("bigBW")) %>% 
   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
-  filter(!Species %in% c("bigBW", "bw", "bp")) %>% 
   mutate(
     Biomass_hyp_low = NA,
     Study_Area = "Antarctic",
     Region = "Antarctic") %>% 
   rename(SpeciesCode = "Species")
-
-SA_krill_data <- read_excel("SouthAfricaKrillData.xlsx", sheet = 2) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+ 
+SA_krill_data <- read_csv("SouthAfricaKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
     Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "South Africa",
@@ -311,8 +311,6 @@ SA_krill_data <- read_excel("SouthAfricaKrillData.xlsx", sheet = 2) %>%
 All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data) 
 
 All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data, SA_krill_data) 
-
-
 
 
 
@@ -1089,24 +1087,13 @@ dev.copy2pdf(file="Fig_3_nonAntarctic.pdf", width=10, height=10)
 summ_prey_annual_ind_stats <- Yearly_prey_ingested %>% 
   filter(!Region %in% c("North Atlantic", "Chile")) %>% 
   mutate(Species = abbr_binom(Species)) %>%
-  group_by(Species, Region) %>% 
+  group_by(Species, Region, feeding_days) %>% 
   summarise(
-    yr_prey_60days_IQR25 = round(quantile(prey60, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_60days_IQR75 = round(quantile(prey60, probs = 0.75, na.rm = TRUE), 0),
-    yr_prey_90days_IQR25 = round(quantile(prey90, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_90days_IQR75 = round(quantile(prey90, probs = 0.75, na.rm = TRUE), 0),
-    yr_prey_120days_IQR25 = round(quantile(prey120, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_120days_IQR75 = round(quantile(prey120, probs = 0.75, na.rm = TRUE), 0),
-    yr_prey_150days_IQR25 = round(quantile(prey150, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_150days_IQR75 = round(quantile(prey150, probs = 0.75, na.rm = TRUE), 0)) %>% 
-  unite("Krill consumption (tonnes ind yr), 60 days feeding, IQR", 
-        c(yr_prey_60days_IQR25, yr_prey_60days_IQR75), sep = "-") %>% 
-  unite("Krill consumption (tonnes ind yr), 90 days feeding, IQR", 
-        c(yr_prey_90days_IQR25, yr_prey_90days_IQR75), sep = "-") %>% 
-  unite("Krill consumption (tonnes ind yr), 120 days feeding, IQR", 
-        c(yr_prey_120days_IQR25, yr_prey_120days_IQR75), sep = "-") %>% 
-  unite("Krill consumption (tonnes ind yr), 150 days feeding, IQR", 
-        c(yr_prey_150days_IQR25, yr_prey_150days_IQR75), sep = "-")
+    yr_prey_IQR25 = round(quantile(prey_consumed_yr, probs = 0.25, na.rm = TRUE)/1000, 2),
+    yr_prey_IQR75 = round(quantile(prey_consumed_yr, probs = 0.75, na.rm = TRUE)/1000, 2)) %>% 
+  unite("Krill consumption (MMT ind yr) IQR", 
+        c(yr_prey_IQR25, yr_prey_IQR75), sep = "-") %>%
+  pivot_wider(names_from = feeding_days, values_from = `Krill consumption (MMT ind yr) IQR`)
 
 
 # Figure 4 filtering ----
@@ -1155,6 +1142,29 @@ Yearly_filtration_curr_pop <-  d_strapped %>%
 Yearly_filtration_curr_pop
 
 dev.copy2pdf(file="Yearly_filtration_curr_pop.pdf", width=10, height=6)
+
+
+summ_filt_annual_pop_stats <- Yearly_filtration_curr_pop %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species) %>% 
+  summarise(
+    yr_filt_60days_IQR25 = round(quantile(filtration60, probs = 0.25, na.rm = TRUE)/1e9, 0),
+    yr_filt_60days_IQR75 = round(quantile(filtration60, probs = 0.75, na.rm = TRUE)/1e9, 0),
+    yr_filt_90days_IQR25 = round(quantile(filtration90, probs = 0.25, na.rm = TRUE)/1e9, 0),
+    yr_filt_90days_IQR75 = round(quantile(filtration90, probs = 0.75, na.rm = TRUE)/1e9, 0),
+    yr_filt_120days_IQR25 = round(quantile(filtration120, probs = 0.25, na.rm = TRUE)/1e9, 0),
+    yr_filt_120days_IQR75 = round(quantile(filtration120, probs = 0.75, na.rm = TRUE)/1e9, 0),
+    yr_filt_150days_IQR25 = round(quantile(filtration150, probs = 0.25, na.rm = TRUE)/1e9, 0),
+    yr_filt_150days_IQR75 = round(quantile(filtration150, probs = 0.75, na.rm = TRUE)/1e9, 0)) %>% 
+  unite("Filtration capacity (km3 ind yr), 60 days feeding, IQR", 
+        c(yr_filt_60days_IQR25, yr_filt_60days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (km3 ind yr), 90 days feeding, IQR", 
+        c(yr_filt_90days_IQR25, yr_filt_90days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (km3 ind yr), 120 days feeding, IQR", 
+        c(yr_filt_120days_IQR25, yr_filt_120days_IQR75), sep = "-") %>% 
+  unite("Filtration capacity (km3 ind yr), 150 days feeding, IQR", 
+        c(yr_filt_150days_IQR25, yr_filt_150days_IQR75), sep = "-")
 
 
 #Historical numbers
@@ -1217,12 +1227,17 @@ dev.copy2pdf(file="Fig_4_filtering.pdf", width=11, height=12)
 
 # CURRENT ANNUAL PREY CONSUMPTION, ANTARCTICA
 Ant_prey_projection <- filtration_master %>% 
+  filter(SpeciesCode %in% c("bw", "bp")) %>% 
   mutate(
     Region = case_when(SpeciesCode %in% c("bp", "bw") ~ "Antarctic"),
-    prey_best_low_lnmean = case_when(SpeciesCode %in% c("bp", "bw") ~ -1.837043),   #using values from Antarctic humpbacks
-    prey_best_low_lnsd = case_when(SpeciesCode %in% c("bp", "bw") ~ 0.5824221),
-    prey_best_upper_lnmean = case_when(SpeciesCode %in% c("bp", "bw") ~ -1.385820),
-    prey_best_upper_lnsd = case_when(SpeciesCode %in% c("bp", "bw") ~ 0.3283333)
+    prey_best_low_lnmean = case_when(SpeciesCode == "bw" ~ -2.025663,
+                                     SpeciesCode == "bp" ~ -2.023616),   #using DC's estimated Antarctic values 
+    prey_best_low_lnsd = case_when(SpeciesCode == "bw" ~  0.5180328,
+                                   SpeciesCode == "bp" ~  0.5169069),
+    prey_best_upper_lnmean = case_when(SpeciesCode == "bw" ~ -1.683988,
+                                       SpeciesCode == "bp" ~ -1.669444),
+    prey_best_upper_lnsd = case_when(SpeciesCode == "bw" ~ 0.2977463,
+                                     SpeciesCode == "bp" ~ 0.2966185)
   )
 
 
@@ -1238,7 +1253,7 @@ d_strapped_Ant_projection <- Ant_prey_projection %>%
   bind_rows(filter(d_strapped, Region == "Antarctic"))
 
 
-d_strapped <- d_strapped %>%
+d_strapped_Ant_projection <- d_strapped_Ant_projection %>%
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus"))
 
 
@@ -1289,6 +1304,20 @@ Yearly_krill_ingested_curr_pop_Antarctic <-  d_strapped_Ant_projection %>%
 Yearly_krill_ingested_curr_pop_Antarctic
 
 dev.copy2pdf(file="Yearly_krill_ingested_curr_pop_Antarctic.pdf", width=10, height=6)
+
+
+
+
+summ_prey_annual_pop_stats <- Yearly_krill_ingested_curr_pop_nonAntarctic %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species, feeding_days) %>% 
+  summarise(
+    yr_prey_IQR25 = round(quantile(krill_consumed_yr, probs = 0.25, na.rm = TRUE)/1e9, 2),
+    yr_prey_IQR75 = round(quantile(krill_consumed_yr, probs = 0.75, na.rm = TRUE)/1e9, 2)) %>% 
+  unite("Krill consumption (MMT ind yr) IQR", 
+        c(yr_prey_IQR25, yr_prey_IQR75), sep = "-") %>%
+  pivot_wider(names_from = feeding_days, values_from = `Krill consumption (MMT ind yr) IQR`)
 
 
 
@@ -1355,6 +1384,20 @@ Fig_4_krill_consume_curr_pop <- ggarrange(Yearly_krill_ingested_curr_pop_Antarct
 Fig_4_krill_consume_curr_pop
 
 dev.copy2pdf(file="Fig_4_krill_consume_curr_pop.pdf", width=11, height=12)
+
+
+summ_prey_annual_pop_stats <- Yearly_krill_ingested_hist_pop_nonAntarctic %>% 
+  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  mutate(Species = abbr_binom(Species)) %>%
+  group_by(Species, feeding_days) %>% 
+  summarise(
+    yr_prey_IQR25 = round(quantile(krill_consumed_yr, probs = 0.25, na.rm = TRUE)/1e9, 2),
+    yr_prey_IQR75 = round(quantile(krill_consumed_yr, probs = 0.75, na.rm = TRUE)/1e9, 2)) %>% 
+  unite("Krill consumption (MMT ind yr) IQR", 
+        c(yr_prey_IQR25, yr_prey_IQR75), sep = "-") %>%
+  pivot_wider(names_from = feeding_days, values_from = `Krill consumption (MMT ind yr) IQR`)
+    
+
 
 
 

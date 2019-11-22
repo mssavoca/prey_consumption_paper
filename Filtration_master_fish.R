@@ -699,14 +699,14 @@ summ_prey_annual_ind_stats <- Yearly_prey_ingested_fish %>%
   mutate(Species = abbr_binom(Species)) %>%
   group_by(Species, Region) %>% 
   summarise(
-    yr_prey_60days_IQR25 = round(quantile(prey60, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_60days_IQR75 = round(quantile(prey60, probs = 0.75, na.rm = TRUE), 0),
-    yr_prey_90days_IQR25 = round(quantile(prey90, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_90days_IQR75 = round(quantile(prey90, probs = 0.75, na.rm = TRUE), 0),
-    yr_prey_120days_IQR25 = round(quantile(prey120, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_120days_IQR75 = round(quantile(prey120, probs = 0.75, na.rm = TRUE), 0),
-    yr_prey_150days_IQR25 = round(quantile(prey150, probs = 0.25, na.rm = TRUE), 0),
-    yr_prey_150days_IQR75 = round(quantile(prey150, probs = 0.75, na.rm = TRUE), 0)) %>% 
+    yr_prey_60days_IQR25 = round(quantile(prey60, probs = 0.25, na.rm = TRUE)/1000, 0),
+    yr_prey_60days_IQR75 = round(quantile(prey60, probs = 0.75, na.rm = TRUE)/1000, 0),
+    yr_prey_90days_IQR25 = round(quantile(prey90, probs = 0.25, na.rm = TRUE)/1000, 0),
+    yr_prey_90days_IQR75 = round(quantile(prey90, probs = 0.75, na.rm = TRUE)/1000, 0),
+    yr_prey_120days_IQR25 = round(quantile(prey120, probs = 0.25, na.rm = TRUE)/1000, 0),
+    yr_prey_120days_IQR75 = round(quantile(prey120, probs = 0.75, na.rm = TRUE)/1000, 0),
+    yr_prey_150days_IQR25 = round(quantile(prey150, probs = 0.25, na.rm = TRUE)/1000, 0),
+    yr_prey_150days_IQR75 = round(quantile(prey150, probs = 0.75, na.rm = TRUE)/1000, 0)) %>% 
   unite("Fish consumption (tonnes ind yr), 60 days feeding, IQR", 
         c(yr_prey_60days_IQR25, yr_prey_60days_IQR75), sep = "-") %>% 
   unite("Fish consumption (tonnes ind yr), 90 days feeding, IQR", 
