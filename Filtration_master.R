@@ -250,18 +250,18 @@ pooled_sd_mean <- function(sd1, sd2, n1, n2) {
 # read in, clean, combine data
 MRY_krill_data <- read_csv("MontereyKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bb")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    #Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "Monterey",
     Region = "Eastern North Pacific") %>% 
   rename(SpeciesCode = "Species") 
 
 SoCal_krill_data <- read_csv("SoCalKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bb")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    #Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "SoCal",
     Region = "Eastern North Pacific") %>% 
   rename(SpeciesCode = "Species") 
@@ -292,18 +292,18 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
 
 WAP_krill_data <- read_csv("AntarcticKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-    Biomass_hyp_low = NA,
+   # Biomass_hyp_low = NA,
     Study_Area = "Antarctic",
     Region = "Antarctic") %>% 
   rename(SpeciesCode = "Species")
  
 SA_krill_data <- read_csv("SouthAfricaKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+   # Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "South Africa",
     Region = "South Africa") %>% 
   rename(SpeciesCode = "Species") 
