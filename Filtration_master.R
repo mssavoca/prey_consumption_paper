@@ -250,18 +250,18 @@ pooled_sd_mean <- function(sd1, sd2, n1, n2) {
 # read in, clean, combine data
 MRY_krill_data <- read_csv("MontereyKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bb")) %>% 
-  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-    #Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "Monterey",
     Region = "Eastern North Pacific") %>% 
   rename(SpeciesCode = "Species") 
 
 SoCal_krill_data <- read_csv("SoCalKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bb")) %>% 
-  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-    #Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "SoCal",
     Region = "Eastern North Pacific") %>% 
   rename(SpeciesCode = "Species") 
@@ -292,18 +292,18 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
 
 WAP_krill_data <- read_csv("AntarcticKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW")) %>% 
-  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-   # Biomass_hyp_low = NA,
+    Biomass_hyp_low = NA,
     Study_Area = "Antarctic",
     Region = "Antarctic") %>% 
   rename(SpeciesCode = "Species")
  
 SA_krill_data <- read_csv("SouthAfricaKrillData (1).csv") %>% 
   filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
-  #select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
   mutate(
-   # Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
     Study_Area = "South Africa",
     Region = "South Africa") %>% 
   rename(SpeciesCode = "Species") 
@@ -718,7 +718,7 @@ Measured_length <- ggplot(d_strapped,
 Measured_length
 
 
-# Figure 2 Daily rorqual water filtration krill consumption per individual ----
+# Figure 2 Daily rorqual water filtration & krill consumption per individual ----
 
 #ANTARCTIC
 Daily_rate_Antarctic <- d_strapped %>% 
@@ -947,7 +947,7 @@ dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
 
 
 
-# Figure 3 Annual rorqual water filtration krill consumption per individual ----
+# Figure 3 Annual rorqual water filtration & krill consumption per individual ----
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
 Yearly_filtration <-  d_strapped %>% 
@@ -1238,19 +1238,22 @@ Ant_prey_projection <- filtration_master %>%
                                        SpeciesCode == "bp" ~ -1.669444),
     prey_best_upper_lnsd = case_when(SpeciesCode == "bw" ~ 0.2977463,
                                      SpeciesCode == "bp" ~ 0.2966185)
+    
   )
+
 
 
 d_strapped_Ant_projection <- Ant_prey_projection %>% 
   filter(
     SpeciesCode %in% c("bw", "bp"),
-    #Region == "Antarctic",
+    Region == "Antarctic",
     prey_general == "Krill") %>% 
   group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
   group_modify(sample_rates) %>% 
   ungroup %>% 
   left_join(pop_data, by = "Species") %>% 
-  bind_rows(filter(d_strapped, Region == "Antarctic"))
+  bind_rows(filter(select(d_strapped, -c(EnDens_hyp_low:EnDens_best_upper)), Region == "Antarctic"))
+
 
 
 d_strapped_Ant_projection <- d_strapped_Ant_projection %>%
@@ -1258,8 +1261,7 @@ d_strapped_Ant_projection <- d_strapped_Ant_projection %>%
 
 
 Yearly_krill_ingested_curr_pop_Antarctic <-  d_strapped_Ant_projection %>% 
-  filter(daily_rate >5,
-         prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
+  filter(daily_rate >5) %>%   #%in% c("Fish", "Krill")) %>%
   #taking the average of Dave's two distributions
   pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
                names_to = "best_prey_est",
@@ -1279,10 +1281,10 @@ Yearly_krill_ingested_curr_pop_Antarctic <-  d_strapped_Ant_projection %>%
                                       prey90 = "90 days feeding", 
                                       prey120 = "120 days feeding", 
                                       prey150 = "150 days feeding"),
-         krill_consumed_yr = case_when(Species == "Balaenoptera physalus" ~ prey_consumed_yr, 
-                                       Species == "Balaenoptera musculus" ~ prey_consumed_yr,
-                                       Species == "Megaptera novaeangliae" ~ prey_consumed_yr,
-                                       Species == "Balaenoptera bonaerensis" ~ prey_consumed_yr)) %>% 
+         krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr, 
+                                       Species == "B. musculus" ~ prey_consumed_yr,
+                                       Species == "M. novaeangliae" ~ prey_consumed_yr,
+                                       Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
   geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), krill_consumed_yr), 
@@ -1404,6 +1406,7 @@ summ_prey_annual_pop_stats <- Yearly_krill_ingested_hist_pop_nonAntarctic %>%
 # PRE-EXPLOITATION ANNUAL PREY CONSUMPTION, ANTARCTICA
 Yearly_krill_ingested_hist_pop_Antarctic <-  d_strapped_Ant_projection %>% 
   filter(daily_rate >5,
+         Region == "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%
   #taking the average of Dave's two distributions
   pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
@@ -1424,10 +1427,10 @@ Yearly_krill_ingested_hist_pop_Antarctic <-  d_strapped_Ant_projection %>%
                                       prey90 = "90 days feeding", 
                                       prey120 = "120 days feeding", 
                                       prey150 = "150 days feeding"),
-         krill_consumed_yr = case_when(Species == "Balaenoptera physalus" ~ prey_consumed_yr, 
-                                       Species == "Balaenoptera musculus" ~ prey_consumed_yr,
-                                       Species == "Megaptera novaeangliae" ~ prey_consumed_yr,
-                                       Species == "Balaenoptera bonaerensis" ~ prey_consumed_yr)) %>% 
+         krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr, 
+                                       Species == "B. musculus" ~ prey_consumed_yr,
+                                       Species == "M. novaeangliae" ~ prey_consumed_yr,
+                                       Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
   geom_flat_violin(aes(x = fct_reorder(abbr_binom(Species), krill_consumed_yr), 
