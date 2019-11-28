@@ -28,6 +28,350 @@ abbr_binom = function(binom) {
         sep = ".")
 }
 
+
+
+
+
+
+
+
+#trying some stuff----
+
+Fe_calc_kg <- function(x) {
+  x*0.8*0.000146
+} # From Doughty et al. 2016, Roman and McCarthy 2010
+N_calc_kg <- function(x) {
+  x*0.8*0.0056
+} # see Roman et al. 2016, converted moles PON to g to kg
+P_calc_kg <- function(x) {
+  x*0.8*0.0089
+} # whale fecal average from Ratnarajah et al. 2014
+
+d_strapped
+
+# d_strapped_Ant_fecal_projection <- d_strapped_Ant_projection %>% 
+#   mutate(
+#     total_feces_best_low_kg = prey_mass_per_day_best_low_kg*0.8,    # From Doughty et al. 2016, Roman and McCarthy 2010
+#             total_Fe_recycled_best_low_kg = total_feces_best_low_kg*0.000146,    # whale fecal average from Ratnarajah et al. 2014
+#             total_N_recycled_best_low_kg = total_feces_best_low_kg*0.0056,     # see Roman et al. 2016, converted moles PON to g to kg  
+#             total_P_recycled_best_low_kg = total_feces_best_low_kg*0.0089,
+#     total_feces_best_upper_kg = prey_mass_per_day_best_upper_kg*0.8,    # From Doughty et al. 2016, Roman and McCarthy 2010
+#             total_Fe_recycled_best_upper_kg = total_feces_best_upper_kg*0.000146,    # whale fecal average from Ratnarajah et al. 2014
+#             total_N_recycled_best_upper_kg = total_feces_best_upper_kg*0.0056,     # see Roman et al. 2016, converted moles PON to g to kg  
+#             total_P_recycled_best_low_kg = total_feces_best_upper_kg*0.0089) %>%     # whale fecal average from Ratnarajah et al. 2014
+# 
+#   
+
+
+d_Ant_nutrients <- d_strapped_Ant_projection %>% 
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  # Taken from fig 3 pre-code
+  filter(daily_rate >5) %>%  
+  #taking the average of Dave's two distributions
+  mutate(prey60_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*60,
+         prey90_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*90,
+         prey120_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*120,
+         prey150_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*150,
+         prey60_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*60,
+         prey90_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*90,
+         prey120_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*120,
+         prey150_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*150) %>%
+  pivot_longer(cols = c("prey60_currpop", "prey90_currpop", "prey120_currpop", "prey150_currpop",
+                        "prey60_histpop", "prey90_histpop", "prey120_histpop", "prey150_histpop"),
+               names_to = "feeding_days",
+               values_to = "krill_consumed_yr") %>% 
+  
+  mutate(
+    time_rec = ifelse(str_detect(feeding_days, "hist"), "historical", "current"),
+    feeding_days = case_when(
+      feeding_days %in% c("prey60_currpop", "prey60_histpop") ~ "60 days feeding",
+      feeding_days %in% c("prey90_currpop", "prey90_histpop") ~ "90 days feeding",
+      feeding_days %in% c("prey120_currpop", "prey120_histpop") ~ "120 days feeding",
+      feeding_days %in% c("prey150_currpop", "prey150_histpop") ~ "150 days feeding")) %>% 
+  
+  dplyr::select(Species, feeding_days, krill_consumed_yr, time_rec) %>% 
+  mutate(Fe_best_est_kg = Fe_calc_kg(krill_consumed_yr),
+         N_best_est_kg = N_calc_kg(krill_consumed_yr),
+         P_best_est_kg = P_calc_kg(krill_consumed_yr),
+         C_respired = krill_consumed_yr*(0.45*0.75))
+
+
+pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
+Fe_recycled_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = Species, 
+                   y = Fe_best_est_kg/1000,
+                   fill = time_rec),
+               width = .5, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Estimated Fe recycled'~(tonnes~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Fe_recycled_Antarctic
+
+Carbon_exported_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = Species, 
+                   y = ((Fe_best_est_kg/1000)*5e4/1e6),   #From Lavery et al 2010 Proc Roy Soc B
+                   fill = time_rec),
+               width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Estimated C exported'~(Mt~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Carbon_exported_Antarctic
+
+Carbon_respired_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = Species, 
+                   y = (C_respired/1e9),   #From Lavery et al 2010 Proc Roy Soc B
+                   fill = time_rec),
+               width = .5, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Estimated C respired'~(Mt~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Carbon_respired_Antarctic
+
+
+Carbon_flux_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = Species, 
+                   y = ((Fe_best_est_kg/1000)*5e4/1e6) - C_respired/1e9 ,   #From Lavery et al 2010 Proc Roy Soc B
+                   fill = time_rec),
+               width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Estimated C exported'~(Mt~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Carbon_flux_Antarctic
+
+d_summ_Ant_nutrients <- d_Ant_nutrients %>% 
+  group_by(Species, feeding_days) %>%
+  summarise(
+    Fe_best_est_t = median(Fe_best_est_kg)/1000,
+    Fe_IQR_25 = round(quantile(Fe_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_IQR_75 = round(quantile(Fe_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2)) %>% 
+  unite("Fe recycled (t pop yr) IQR", 
+        c(Fe_IQR_25, Fe_IQR_75), sep = "-") %>%
+  pivot_wider(names_from = feeding_days, values_from = c(Fe_best_est_t, `Fe recycled (t pop yr) IQR`))
+
+
+
+
+
+
+# Creates nutrient recycling and PPR estimates for NON-ANTARCTIC data and projection ----
+d_nonAnt_nutrients <- d_strapped %>% 
+  filter(Region != "Antarctic") %>% 
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  # Taken from fig 3 pre-code
+  filter(daily_rate >5) %>%  
+  #taking the average of Dave's two distributions
+  mutate(prey60_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*60,
+         prey90_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*90,
+         prey120_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*120,
+         prey150_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*150,
+         prey60_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*60,
+         prey90_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*90,
+         prey120_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*120,
+         prey150_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*150) %>%
+  pivot_longer(cols = c("prey60_currpop", "prey90_currpop", "prey120_currpop", "prey150_currpop",
+                        "prey60_histpop", "prey90_histpop", "prey120_histpop", "prey150_histpop"),
+               names_to = "feeding_days",
+               values_to = "prey_consumed_yr") %>% 
+  
+  mutate(
+    time_rec = ifelse(str_detect(feeding_days, "hist"), "historical", "current"),
+    feeding_days = case_when(
+      feeding_days %in% c("prey60_currpop", "prey60_histpop") ~ "60 days feeding",
+      feeding_days %in% c("prey90_currpop", "prey90_histpop") ~ "90 days feeding",
+      feeding_days %in% c("prey120_currpop", "prey120_histpop") ~ "120 days feeding",
+      feeding_days %in% c("prey150_currpop", "prey150_histpop") ~ "150 days feeding"),
+    krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
+                                  Species == "B. musculus" ~ prey_consumed_yr,
+                                  Species == "M. novaeangliae" ~ prey_consumed_yr*0.55,
+                                  Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
+  
+  dplyr::select(Species, feeding_days, krill_consumed_yr, time_rec) %>% 
+  mutate(Fe_best_est_kg = Fe_calc_kg(krill_consumed_yr),
+         N_best_est_kg = N_calc_kg(krill_consumed_yr),
+         P_best_est_kg = P_calc_kg(krill_consumed_yr),
+         C_respired = krill_consumed_yr*(0.45*0.75))
+
+
+
+
+
+
+
+
+
+######################################################################################
+# Estimating amount of primary production required to sustain global whale populations
+######################################################################################
+
+#prepare data for krill PPR in the CCE
+PPR_data <- prey_master_varying_DperYr %>% 
+  mutate(CCE_population = case_when(Species == "Balaenoptera musculus" ~ 1647,
+                                    Species == "Balaenoptera physalus" ~ 9029,
+                                    Species == "Megaptera novaeangliae" ~ 1918),
+         PPR_scenario_CCE = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*CCE_population,  # See Barlow et al. 2008 eq 6 for explanation
+         PPR_scenario_global = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*`Population estimate`,
+         PPR_scenario_global_historical = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*`Total removed`)    
+
+
+#From Chavez and Messie 2009
+npp_gm2 <- 479
+CCEarea_km2 <- 225000
+npp_kg <- npp_gm2/1000 * CCEarea_km2*1000^2
+
+PPR_table <- PPR_data %>% 
+  group_by(Species, scenario) %>% 
+  summarise(PPR_mean_CCE = mean(PPR_scenario_CCE),
+            PPR_se_CCE = SE(PPR_scenario_CCE),
+            NPP_to_whales_CCE = PPR_mean_CCE/npp_kg,
+            PPR_mean_global = mean(PPR_scenario_global),
+            PPR_se_global = SE(PPR_scenario_global),
+            NPP_to_whales_global = PPR_mean_global/(47500000000*1000),
+            PPR_mean_global_historical = mean(PPR_scenario_global_historical),
+            PPR_se_global_historical = SE(PPR_scenario_global_historical),
+            NPP_to_whales_global_historical = PPR_mean_global_historical/(47500000000*1000)) # From Longhurst et al. 1995
+
+
+# now to plot
+pal <- c("Balaenoptera bonaerensis" = "firebrick3", "Megaptera novaeangliae" = "gray30", "Balaenoptera physalus" = "chocolate3", "Balaenoptera musculus" = "dodgerblue2")
+
+
+
+PPR_plot_CCE <- PPR_table %>% 
+  ungroup %>% 
+  filter(scenario %in% c("geoMeanNULL_wt_g_DC", 
+                         "MedNULL_wt_g_DC", 
+                         "geoMeanBOUT_wt_g_DC", 
+                         "MedBOUT_wt_g_DC")) %>% 
+  drop_na(NPP_to_whales_CCE) %>% 
+  mutate(scenario = fct_reorder(scenario, NPP_to_whales_CCE),
+         Species = fct_reorder(factor(Species), NPP_to_whales_CCE)) %>% 
+  ggplot(aes(x = scenario, y = NPP_to_whales_CCE, fill = Species)) +
+  geom_col(position = "stack") + 
+  ylab("Proportion of NPP to whales in the CCE") + 
+  theme_bw() +
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(size=12, angle = 45, hjust = 1, face="italic"),
+        axis.text.y = element_text(size=12),       
+        axis.title=element_text(size=13, face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 14, face="bold"),
+        strip.text.x = element_text(size = 12))
+PPR_plot_CCE + theme(legend.position="top")
+
+
+
+PPR_plot_global <- PPR_table %>% 
+  ungroup %>% 
+  filter(scenario %in% c("geoMeanNULL_wt_g_DC", 
+                         "MedNULL_wt_g_DC", 
+                         "geoMeanBOUT_wt_g_DC", 
+                         "MedBOUT_wt_g_DC")) %>% 
+  mutate(scenario = fct_reorder(scenario, NPP_to_whales_global),
+         Species = fct_reorder(factor(Species), NPP_to_whales_global)) %>% 
+  ggplot(aes(x = scenario, y = NPP_to_whales_global, fill = Species)) +
+  geom_col(position = "stack") + 
+  ylab("Current NPP to whales") + 
+  theme_bw() +
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(size=12, angle = 45, hjust = 1, face="italic"),
+        axis.text.y = element_text(size=12),       
+        axis.title=element_text(size=13, face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 14, face="bold"),
+        strip.text.x = element_text(size = 12))
+PPR_plot_global + theme(legend.position="none")
+
+
+PPR_plot_global_historical <- PPR_table %>% 
+  ungroup %>% 
+  filter(scenario %in% c("geoMeanNULL_wt_g_DC", 
+                         "MedNULL_wt_g_DC", 
+                         "geoMeanBOUT_wt_g_DC", 
+                         "MedBOUT_wt_g_DC")) %>% 
+  drop_na(NPP_to_whales_global_historical) %>% 
+  mutate(scenario = fct_reorder(scenario, NPP_to_whales_global_historical),
+         Species = fct_reorder(factor(Species), NPP_to_whales_global_historical)) %>% 
+  ggplot(aes(x = scenario, y = NPP_to_whales_global_historical, fill = Species)) +
+  geom_col(position = "stack") + 
+  ylab("Historical NPP to whales") + 
+  theme_bw() +
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(size=12, angle = 45, hjust = 1, face="italic"),
+        axis.text.y = element_text(size=12),       
+        axis.title=element_text(size=13, face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 14, face="bold"),
+        strip.text.x = element_text(size = 12))
+PPR_plot_global_historical + theme(legend.position="none")
+
+NPPwhales_combined_plot <- ggarrange(PPR_plot_global, PPR_plot_global_historical, 
+                                     ncol = 2, nrow = 1,
+                                     common.legend = TRUE)
+annotate_figure(NPPwhales_combined_plot,
+                top = text_grob("Global net primary productivity (NPP) to whales", 
+                                face = "bold", size = 14))
+
+
+
+# estimating amount of food consumed over the course of a feeding season (see Lockyer 2007).
+# using the equation Nr_ind = (MDC*prop_excreted)*nut_conc
+nutrient_sims <- crossing(TotalPreyConsumed_kg = 18500,
+                          E_blubber = seq(27e3, 37e3, by = 1e3),
+                          A = 0.8,
+                          beta = seq(2, 5, by = 0.5),
+                          M = 42240,
+                          D_feeding = seq(60, 182.5, by = 10)) %>% 
+  mutate(E_preyseason = ((W_blubber*E_blubber)/A) + (((beta*293.1*M^0.75)*D_feeding)/A))
+
+sims_plot <- sims %>% 
+  ggplot(aes(E_preyseason)) +
+  geom_histogram() +
+  theme_classic()
+
+sims_summ <- summarize_at(sims, vars(E_preyseason), list(mean, sd, median, min, max))
+
+
+
+
+
+
+
+
+
+
+
+
+
+# old code below here ----
+
 # read in data for direct predictions of daily ration (R) from literature
 prey_predict <- read_excel("PreyIngestPredict.xlsx") %>% mutate(dummy = 1)
 prey_predict_w_M <- tibble(M_kg = seq(5000,120000,5000), dummy =1) %>%
@@ -285,7 +629,7 @@ pal <- c("ba" = "gold3", "bb" = "firebrick3", "be" = "darkorchid3",  "mn" = "gra
 Shape <- c("ba" = 10, "bb" = 15, "be" = 8, "mn" = 17, "bp" = 18, "bw" = 19)
 
 ExcretedFe_HrperD <- ggplot(filter(excreta_day_master, TotalTagTime_h > 2 & scenario %in% c("geoMeanNULL_wt_g_DC", "MedNULL_wt_g_DC", "geoMeanBOUT_wt_g_DC", "MedBOUT_wt_g_DC")),
-                           aes(x = hours_feeding, y = total_Fe_recycled_kg, color = SpeciesCode, shape = SpeciesCode)) + 
+                            aes(x = hours_feeding, y = total_Fe_recycled_kg, color = SpeciesCode, shape = SpeciesCode)) + 
   geom_point(inherit.aes = T, aes(group = SpeciesCode), alpha = 0.3) + 
   geom_smooth(inherit.aes = T, aes(group = SpeciesCode), size = 0.5) +
   facet_grid(Binomial~scenario_calc) +
@@ -354,133 +698,4 @@ ExcretedFe_DperYr <- ggplot(filter(excreta_year_master, TotalTagTime_h > 2 & sce
         strip.text.x = element_text(size = 12),
         strip.text.y = element_text(size = 10, face="italic"))
 ExcretedFe_DperYr + theme(legend.position = "none")
-
-
-######################################################################################
-# Estimating amount of primary production required to sustain global whale populations
-######################################################################################
-
-#prepare data for krill PPR in the CCE
-PPR_data <- prey_master_varying_DperYr %>% 
-  mutate(CCE_population = case_when(Species == "Balaenoptera musculus" ~ 1647,
-                                    Species == "Balaenoptera physalus" ~ 9029,
-                                    Species == "Megaptera novaeangliae" ~ 1918),
-         PPR_scenario_CCE = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*CCE_population,  # See Barlow et al. 2008 eq 6 for explanation
-         PPR_scenario_global = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*`Population estimate`,
-         PPR_scenario_global_historical = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*`Total removed`)    
-
-
-#From Chavez and Messie 2009
-npp_gm2 <- 479
-CCEarea_km2 <- 225000
-npp_kg <- npp_gm2/1000 * CCEarea_km2*1000^2
-
-PPR_table <- PPR_data %>% 
-  group_by(Species, scenario) %>% 
-  summarise(PPR_mean_CCE = mean(PPR_scenario_CCE),
-            PPR_se_CCE = SE(PPR_scenario_CCE),
-            NPP_to_whales_CCE = PPR_mean_CCE/npp_kg,
-            PPR_mean_global = mean(PPR_scenario_global),
-            PPR_se_global = SE(PPR_scenario_global),
-            NPP_to_whales_global = PPR_mean_global/(47500000000*1000),
-            PPR_mean_global_historical = mean(PPR_scenario_global_historical),
-            PPR_se_global_historical = SE(PPR_scenario_global_historical),
-            NPP_to_whales_global_historical = PPR_mean_global_historical/(47500000000*1000)) # From Longhurst et al. 1995
-
-
-# now to plot
-pal <- c("Balaenoptera bonaerensis" = "firebrick3", "Megaptera novaeangliae" = "gray30", "Balaenoptera physalus" = "chocolate3", "Balaenoptera musculus" = "dodgerblue2")
-
-
-
-PPR_plot_CCE <- PPR_table %>% 
-  ungroup %>% 
-  filter(scenario %in% c("geoMeanNULL_wt_g_DC", 
-                         "MedNULL_wt_g_DC", 
-                         "geoMeanBOUT_wt_g_DC", 
-                         "MedBOUT_wt_g_DC")) %>% 
-  drop_na(NPP_to_whales_CCE) %>% 
-  mutate(scenario = fct_reorder(scenario, NPP_to_whales_CCE),
-         Species = fct_reorder(factor(Species), NPP_to_whales_CCE)) %>% 
-  ggplot(aes(x = scenario, y = NPP_to_whales_CCE, fill = Species)) +
-  geom_col(position = "stack") + 
-  ylab("Proportion of NPP to whales in the CCE") + 
-  theme_bw() +
-  scale_fill_manual(values = pal) +
-  theme(axis.text.x = element_text(size=12, angle = 45, hjust = 1, face="italic"),
-        axis.text.y = element_text(size=12),       
-        axis.title=element_text(size=13, face="bold"),
-        plot.title = element_text(hjust = 0.5, size = 14, face="bold"),
-        strip.text.x = element_text(size = 12))
-PPR_plot_CCE + theme(legend.position="top")
-
-
-
-PPR_plot_global <- PPR_table %>% 
-  ungroup %>% 
-  filter(scenario %in% c("geoMeanNULL_wt_g_DC", 
-                         "MedNULL_wt_g_DC", 
-                         "geoMeanBOUT_wt_g_DC", 
-                         "MedBOUT_wt_g_DC")) %>% 
-  mutate(scenario = fct_reorder(scenario, NPP_to_whales_global),
-         Species = fct_reorder(factor(Species), NPP_to_whales_global)) %>% 
-  ggplot(aes(x = scenario, y = NPP_to_whales_global, fill = Species)) +
-  geom_col(position = "stack") + 
-  ylab("Current NPP to whales") + 
-  theme_bw() +
-  scale_fill_manual(values = pal) +
-  theme(axis.text.x = element_text(size=12, angle = 45, hjust = 1, face="italic"),
-        axis.text.y = element_text(size=12),       
-        axis.title=element_text(size=13, face="bold"),
-        plot.title = element_text(hjust = 0.5, size = 14, face="bold"),
-        strip.text.x = element_text(size = 12))
-PPR_plot_global + theme(legend.position="none")
-
-
-PPR_plot_global_historical <- PPR_table %>% 
-  ungroup %>% 
-  filter(scenario %in% c("geoMeanNULL_wt_g_DC", 
-                         "MedNULL_wt_g_DC", 
-                         "geoMeanBOUT_wt_g_DC", 
-                         "MedBOUT_wt_g_DC")) %>% 
-  drop_na(NPP_to_whales_global_historical) %>% 
-  mutate(scenario = fct_reorder(scenario, NPP_to_whales_global_historical),
-         Species = fct_reorder(factor(Species), NPP_to_whales_global_historical)) %>% 
-  ggplot(aes(x = scenario, y = NPP_to_whales_global_historical, fill = Species)) +
-  geom_col(position = "stack") + 
-  ylab("Historical NPP to whales") + 
-  theme_bw() +
-  scale_fill_manual(values = pal) +
-  theme(axis.text.x = element_text(size=12, angle = 45, hjust = 1, face="italic"),
-        axis.text.y = element_text(size=12),       
-        axis.title=element_text(size=13, face="bold"),
-        plot.title = element_text(hjust = 0.5, size = 14, face="bold"),
-        strip.text.x = element_text(size = 12))
-PPR_plot_global_historical + theme(legend.position="none")
-
-NPPwhales_combined_plot <- ggarrange(PPR_plot_global, PPR_plot_global_historical, 
-                                     ncol = 2, nrow = 1,
-                                     common.legend = TRUE)
-annotate_figure(NPPwhales_combined_plot,
-                top = text_grob("Global net primary productivity (NPP) to whales", 
-                                face = "bold", size = 14))
-
-
-
-# estimating amount of food consumed over the course of a feeding season (see Lockyer 2007).
-# using the equation Nr_ind = (MDC*prop_excreted)*nut_conc
-nutrient_sims <- crossing(TotalPreyConsumed_kg = 18500,
-                          E_blubber = seq(27e3, 37e3, by = 1e3),
-                          A = 0.8,
-                          beta = seq(2, 5, by = 0.5),
-                          M = 42240,
-                          D_feeding = seq(60, 182.5, by = 10)) %>% 
-  mutate(E_preyseason = ((W_blubber*E_blubber)/A) + (((beta*293.1*M^0.75)*D_feeding)/A))
-
-sims_plot <- sims %>% 
-  ggplot(aes(E_preyseason)) +
-  geom_histogram() +
-  theme_classic()
-
-sims_summ <- summarize_at(sims, vars(E_preyseason), list(mean, sd, median, min, max))
 

@@ -599,7 +599,7 @@ sample_rates <- function(rows, keys) {
   
   mass_per_day <- function(rate, capacity, lnmean, lnsd) {
     densities <- rlnorm(rate, lnmean, lnsd)
-    sum(capacity * densities)
+    sum(capacity * densities)         # This is the line to show Dave
   }
   
   # Sample size
@@ -612,7 +612,7 @@ sample_rates <- function(rows, keys) {
                    slope = rows$slope[1],
                    intercept = rows$intercept[1],
                    measured_engulfment_cap_m3 = (length_distrib ^ slope * 10 ^ intercept * 0.9766)/1000,
-                   prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day,
+                   prey_mass_per_day_hyp_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day,  # Other line to show to Dave
                                                    lnmean = rows$prey_hyp_low_lnmean[1],
                                                    lnsd = rows$prey_hyp_low_lnsd[1]),
                    prey_mass_per_day_best_low_kg = map2_dbl(daily_rate, measured_engulfment_cap_m3, mass_per_day, 
@@ -948,8 +948,7 @@ dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
 
 
 # Figure 3 Annual rorqual water filtration & krill consumption per individual ----
-pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
-
+ 
 Yearly_filtration <-  d_strapped %>% 
   filter(daily_rate >5,
          Region != "Antarctic",
