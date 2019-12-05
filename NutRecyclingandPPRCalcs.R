@@ -99,6 +99,13 @@ d_Ant_nutrients <- d_strapped_Ant_projection %>%
          C_respired = krill_consumed_yr*(0.45*0.75))
 
 
+
+d_Ant_nutrients %>% filter(time_rec == "historical") %>% group_by(Species) %>% summarise(Fe_med = median(Fe_best_est_kg))
+
+(20252140*0.75)/1000*5e4/1e6
+
+- C_respired/1e9
+
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
 Fe_recycled_Antarctic <- ggplot(data = d_Ant_nutrients) +
@@ -117,9 +124,9 @@ Fe_recycled_Antarctic <- ggplot(data = d_Ant_nutrients) +
         axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
 Fe_recycled_Antarctic
 
-Carbon_exported_Antarctic <- ggplot(data = d_Ant_nutrients) +
-  geom_boxplot(aes(x = Species, 
-                   y = ((Fe_best_est_kg/1000)*5e4/1e6),   #From Lavery et al 2010 Proc Roy Soc B
+Carbon_production_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+                   y = (((Fe_best_est_kg*0.75)/1000)*5e4/1e6),   #From Lavery et al 2010 Proc Roy Soc B
                    fill = time_rec),
                width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
   #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
@@ -127,21 +134,21 @@ Carbon_exported_Antarctic <- ggplot(data = d_Ant_nutrients) +
   #scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma) +
   labs(x = "Species",
-       y = bquote('Estimated C exported'~(Mt~yr^-1))) + 
+       y = bquote('Fe-induced C producton'~(Mt~yr^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
-Carbon_exported_Antarctic
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic")) 
+Carbon_production_Antarctic
 
 Carbon_respired_Antarctic <- ggplot(data = d_Ant_nutrients) +
-  geom_boxplot(aes(x = Species, 
+  geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
                    y = (C_respired/1e9),   #From Lavery et al 2010 Proc Roy Soc B
                    fill = time_rec),
                width = .5, outlier.shape = NA, alpha = 0.5) +
   #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
   #coord_flip() + 
   #scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 100), breaks = c(0, 1, 10, 100)) +
   labs(x = "Species",
        y = bquote('Estimated C respired'~(Mt~yr^-1))) + 
   theme_classic(base_size = 20) +
@@ -151,8 +158,8 @@ Carbon_respired_Antarctic
 
 
 Carbon_flux_Antarctic <- ggplot(data = d_Ant_nutrients) +
-  geom_boxplot(aes(x = Species, 
-                   y = ((Fe_best_est_kg/1000)*5e4/1e6) - C_respired/1e9 ,   #From Lavery et al 2010 Proc Roy Soc B
+  geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+                   y = (((Fe_best_est_kg*0.75)/1000)*5e4/1e6) - C_respired/1e9 ,   #From Lavery et al 2010 Proc Roy Soc B
                    fill = time_rec),
                width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
   #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
@@ -160,21 +167,45 @@ Carbon_flux_Antarctic <- ggplot(data = d_Ant_nutrients) +
   #scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma) +
   labs(x = "Species",
-       y = bquote('Estimated C exported'~(Mt~yr^-1))) + 
+       y = bquote('Estimated C exported'~(Mt~yr^-1)),
+       fill = "Population") + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
 Carbon_flux_Antarctic
 
+#Doesnt work out, will do manually
+C_plot <- ggarrange(Carbon_production_Antarctic, Carbon_respired_Antarctic, Carbon_flux_Antarctic,
+                      labels = c("A", "B", "C"), # THIS IS SO COOL!!
+                      font.label = list(size = 18),
+                      legend = "none",
+                      widths = c(1,2), 
+                      ncol = 1, nrow = 3)
+C_plot
+
+
 d_summ_Ant_nutrients <- d_Ant_nutrients %>% 
-  group_by(Species, feeding_days) %>%
+  group_by(Species, time_rec) %>%
   summarise(
     Fe_best_est_t = median(Fe_best_est_kg)/1000,
     Fe_IQR_25 = round(quantile(Fe_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_IQR_75 = round(quantile(Fe_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2)) %>% 
+    Fe_IQR_75 = round(quantile(Fe_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    N_best_est_t = median(N_best_est_kg)/1000,
+    N_IQR_25 = round(quantile(N_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    N_IQR_75 = round(quantile(N_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    P_best_est_t = median(P_best_est_kg)/1000,
+    P_IQR_25 = round(quantile(P_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    P_IQR_75 = round(quantile(P_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2)
+    ) %>% 
   unite("Fe recycled (t pop yr) IQR", 
         c(Fe_IQR_25, Fe_IQR_75), sep = "-") %>%
-  pivot_wider(names_from = feeding_days, values_from = c(Fe_best_est_t, `Fe recycled (t pop yr) IQR`))
+  unite("N recycled (t pop yr) IQR", 
+        c(N_IQR_25, N_IQR_75), sep = "-") %>%
+  unite("P recycled (t pop yr) IQR", 
+        c(P_IQR_25, P_IQR_75), sep = "-") %>% 
+  mutate(Region = "Antarctic") 
+  
+  #pivot_wider(names_from = time_rec, values_from = c(Fe_best_est_t, `Fe recycled (t pop yr) IQR`))
 
 
 
@@ -213,20 +244,90 @@ d_nonAnt_nutrients <- d_strapped %>%
       feeding_days %in% c("prey150_currpop", "prey150_histpop") ~ "150 days feeding"),
     krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
                                   Species == "B. musculus" ~ prey_consumed_yr,
-                                  Species == "M. novaeangliae" ~ prey_consumed_yr*0.55,
-                                  Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
+                                  Species == "M. novaeangliae" ~ prey_consumed_yr*0.55)) %>% 
   
   dplyr::select(Species, feeding_days, krill_consumed_yr, time_rec) %>% 
   mutate(Fe_best_est_kg = Fe_calc_kg(krill_consumed_yr),
          N_best_est_kg = N_calc_kg(krill_consumed_yr),
          P_best_est_kg = P_calc_kg(krill_consumed_yr),
-         C_respired = krill_consumed_yr*(0.45*0.75))
+         C_respired = krill_consumed_yr*(0.45*0.75)) %>% 
+  filter(!is.na(krill_consumed_yr)) 
+
+
+d_summ_nonAnt_nutrients <- d_nonAnt_nutrients %>% 
+  group_by(Species, time_rec) %>%
+  summarise(
+    Fe_best_est_t = median(Fe_best_est_kg)/1000,
+    Fe_IQR_25 = round(quantile(Fe_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_IQR_75 = round(quantile(Fe_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    N_best_est_t = median(N_best_est_kg)/1000,
+    N_IQR_25 = round(quantile(N_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    N_IQR_75 = round(quantile(N_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    P_best_est_t = median(P_best_est_kg)/1000,
+    P_IQR_25 = round(quantile(P_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    P_IQR_75 = round(quantile(P_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2)
+  ) %>% 
+  unite("Fe recycled (t pop yr) IQR", 
+        c(Fe_IQR_25, Fe_IQR_75), sep = "-") %>%
+  unite("N recycled (t pop yr) IQR", 
+        c(N_IQR_25, N_IQR_75), sep = "-") %>%
+  unite("P recycled (t pop yr) IQR", 
+        c(P_IQR_25, P_IQR_75), sep = "-") %>% 
+  mutate(Region = "non-Antarctic")
 
 
 
+# Combining summary tables for figure
+
+d_nut_summ_combined <- bind_rows(d_summ_Ant_nutrients, d_summ_nonAnt_nutrients) %>% 
+  pivot_longer(cols = c(Fe_best_est_t, N_best_est_t, P_best_est_t),
+               names_to = "element",
+               values_to = "tons excreted") %>% 
+  mutate(element = ifelse(str_detect(element, "Fe"), "Total iron", 
+                          ifelse(str_detect(element, "N"), "Total nitrogen", "Total phosphorus"))
+         ) %>% 
+  select(c(Species, time_rec, Region, element, `tons excreted`)) 
+  
+  
+
+Fe_plot <-  d_nut_summ_combined %>% 
+  filter(element == "Total iron") %>% 
+  ggplot() +
+  geom_bar(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. musculus"), 
+               y = `tons excreted`, 
+               fill = Region), stat = "identity") +
+  facet_grid(time_rec~element, scales = "free", space = "free") +
+  #scale_y_log10(labels = scales::comma) +
+  scale_fill_manual(values = c("navy", "olivedrab")) +
+  labs(x = "Species",
+       y = bquote('Estimated quantity excreted'~(t~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Fe_plot
 
 
+NandP_plot <-  d_nut_summ_combined %>% 
+  filter(element != "Total iron") %>% 
+  ggplot() +
+  geom_bar(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. musculus"), 
+               y = `tons excreted`, 
+               fill = Region), stat = "identity") +
+  facet_grid(time_rec~element, scales = "free", space = "free") +
+  #scale_y_log10(labels = scales::comma) +
+  scale_fill_manual(values = c("navy", "olivedrab")) +
+  labs(x = "Species",
+       y = "") + 
+  theme_classic(base_size = 20) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+NandP_plot
 
+nut_plot <- ggarrange(Fe_plot, NandP_plot,
+                      labels = c("A", "B"), # THIS IS SO COOL!!
+                      font.label = list(size = 18),
+                      legend = "none",
+                      widths = c(1,2), 
+                      ncol = 2, nrow = 1)
+nut_plot
 
 
 

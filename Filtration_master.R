@@ -599,7 +599,7 @@ sample_rates <- function(rows, keys) {
   
   mass_per_day <- function(rate, capacity, lnmean, lnsd) {
     densities <- rlnorm(rate, lnmean, lnsd)
-    sum(capacity * densities)         # This is the line to show Dave
+    sum(capacity * densities)         # This is the line to show Dave; sampling with replacement, is this what we should do? Think about non-independence of samples
   }
   
   # Sample size
