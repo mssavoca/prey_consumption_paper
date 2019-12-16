@@ -635,7 +635,7 @@ d_strapped <- filtration_master %>%
 
 
 #Adding in krill energy density in kJ/kg; see scaling paper supplement
-d_strapped <-  d_strapped%>% 
+d_strapped <-  d_strapped %>% 
   mutate(EnDens_hyp_low = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_hyp_low_kg,
                                     Region != "Antarctic" ~ 3370*prey_mass_per_day_hyp_low_kg),
          EnDens_best_low = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_best_low_kg,
@@ -1241,7 +1241,7 @@ Ant_prey_projection <- filtration_master %>%
   )
 
 
-
+#Need to run d_strapped before all this
 d_strapped_Ant_projection <- Ant_prey_projection %>% 
   filter(
     SpeciesCode %in% c("bw", "bp"),
@@ -1309,17 +1309,24 @@ dev.copy2pdf(file="Yearly_krill_ingested_curr_pop_Antarctic.pdf", width=10, heig
 
 
 
-summ_prey_annual_pop_stats <- Yearly_krill_ingested_curr_pop_nonAntarctic %>% 
-  filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+summ_prey_annual_pop_stats <- Yearly_krill_ingested_hist_pop_Antarctic %>% 
+  #filter(!Region %in% c("North Atlantic", "Chile")) %>% 
+  filter(Region == "Antarctic") %>% 
   mutate(Species = abbr_binom(Species)) %>%
   group_by(Species, feeding_days) %>% 
   summarise(
     yr_prey_IQR25 = round(quantile(krill_consumed_yr, probs = 0.25, na.rm = TRUE)/1e9, 2),
     yr_prey_IQR75 = round(quantile(krill_consumed_yr, probs = 0.75, na.rm = TRUE)/1e9, 2)) %>% 
-  unite("Krill consumption (MMT ind yr) IQR", 
-        c(yr_prey_IQR25, yr_prey_IQR75), sep = "-") %>%
+  #pivot_wider(names_from = feeding_days, values_from = yr_prey_IQR25:yr_prey_IQR75)
+  #unite("Krill consumption (MMT ind yr) IQR", c(yr_prey_IQR25, yr_prey_IQR75), sep = "-") %>%
   pivot_wider(names_from = feeding_days, values_from = `Krill consumption (MMT ind yr) IQR`)
 
+  
+# Summary table for paper's discussion
+annual_prey_consumed_summ <- summ_prey_annual_pop_stats %>% 
+  group_by(Species) %>% 
+  summarise(IQR_25_MMT = mean(yr_prey_IQR25),
+            IQR_75_MMT = mean(yr_prey_IQR75))
 
 
 # CURRENT ANNUAL PREY CONSUMPTION, NON-ANTARCTICA

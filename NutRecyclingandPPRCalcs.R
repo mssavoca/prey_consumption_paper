@@ -62,6 +62,36 @@ d_strapped
 # 
 #   
 
+Ant_prey_projection <- filtration_master %>% 
+  filter(SpeciesCode %in% c("bw", "bp")) %>% 
+  mutate(
+    Region = case_when(SpeciesCode %in% c("bp", "bw") ~ "Antarctic"),
+    prey_best_low_lnmean = case_when(SpeciesCode == "bw" ~ -2.025663,
+                                     SpeciesCode == "bp" ~ -2.023616),   #using DC's estimated Antarctic values 
+    prey_best_low_lnsd = case_when(SpeciesCode == "bw" ~  0.5180328,
+                                   SpeciesCode == "bp" ~  0.5169069),
+    prey_best_upper_lnmean = case_when(SpeciesCode == "bw" ~ -1.683988,
+                                       SpeciesCode == "bp" ~ -1.669444),
+    prey_best_upper_lnsd = case_when(SpeciesCode == "bw" ~ 0.2977463,
+                                     SpeciesCode == "bp" ~ 0.2966185)
+    
+  )
+
+
+
+d_strapped_Ant_projection <- Ant_prey_projection %>% 
+  filter(
+    #SpeciesCode %in% c("bw", "bp"),
+    Region == "Antarctic",
+    prey_general == "Krill") %>% 
+  group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
+  group_modify(sample_rates) %>% 
+  ungroup %>% 
+  left_join(pop_data, by = "Species") %>% 
+  bind_rows(filter(select(d_strapped, -c(EnDens_hyp_low:EnDens_best_upper)), Region == "Antarctic"))
+
+
+
 
 d_Ant_nutrients <- d_strapped_Ant_projection %>% 
   pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
@@ -99,9 +129,16 @@ d_Ant_nutrients <- d_strapped_Ant_projection %>%
          C_respired = krill_consumed_yr*(0.45*0.75))
 
 
-
-d_Ant_nutrients %>% filter(time_rec == "historical") %>% group_by(Species) %>% summarise(Fe_med = median(Fe_best_est_kg))
-
+# summary table for nutrients
+d_Ant_nutrients_summ <- d_Ant_nutrients %>% 
+  filter(time_rec == "historical") %>% 
+  group_by(Species) %>% 
+  summarise(Fe_med_kg = mean(Fe_best_est_kg),
+            C_produced_Mt = ((mean(Fe_best_est_kg)*0.75)/1e9)*5e4,
+            C_respired_Mt  = mean(C_respired)/1e9,
+            Total_C_exported_Mt = C_produced_Mt - C_respired_Mt)
+            
+            
 (20252140*0.75)/1000*5e4/1e6
 
 - C_respired/1e9
@@ -126,7 +163,7 @@ Fe_recycled_Antarctic
 
 Carbon_production_Antarctic <- ggplot(data = d_Ant_nutrients) +
   geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
-                   y = (((Fe_best_est_kg*0.75)/1000)*5e4/1e6),   #From Lavery et al 2010 Proc Roy Soc B
+                   y = ((Fe_best_est_kg*0.75)/1e9)*5e4,   #From Lavery et al 2010 Proc Roy Soc B
                    fill = time_rec),
                width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
   #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
@@ -334,6 +371,13 @@ nut_plot
 ######################################################################################
 # Estimating amount of primary production required to sustain global whale populations
 ######################################################################################
+
+PPR_data <- Yearly_krill_ingested_curr_pop_Antarctic %>% 
+  mutate(PPR_required = krill_consumed_yr*0.1111*((1/0.1)^(2.2-1))) %>%
+  group_by(Species) %>% 
+  summarise(PPR_required_avg = mean(PPR_required))
+
+
 
 #prepare data for krill PPR in the CCE
 PPR_data <- prey_master_varying_DperYr %>% 
