@@ -1258,6 +1258,7 @@ Yearly_krill_ingested_Antarctic <-  d_strapped_Ant_projection %>%
                    #group = time_period
   ),
   width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  geom_hline(yintercept = 3.79e8, linetype = "dashed") +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
   facet_grid(.~Species, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1272,7 +1273,7 @@ Yearly_krill_ingested_Antarctic <-  d_strapped_Ant_projection %>%
 Yearly_krill_ingested_Antarctic
 
 
-dev.copy2pdf(file="Yearly_krill_ingested_Antarctic.pdf", width=10.75, height=6)
+dev.copy2pdf(file="Yearly_krill_ingested_Antarctic_wkrillpop.pdf", width=10.75, height=6)
 
 
 
