@@ -1235,7 +1235,7 @@ Yearly_krill_ingested_Antarctic <-  d_strapped_Ant_projection %>%
                names_to = "feeding_days",
                values_to = "prey_consumed_yr") %>% 
   
-  mutate(time_period = ifelse(str_detect(feeding_days, "hist"), "historical", "current")) %>% 
+  mutate(time_period = ifelse(str_detect(feeding_days, "hist"), "historic", "current")) %>% 
   
   mutate(feeding_days = factor(feeding_days),
          feeding_days = case_when(feeding_days %in% c("prey60curr", "prey60hist")  ~ "60 days feeding", 
@@ -1248,17 +1248,17 @@ Yearly_krill_ingested_Antarctic <-  d_strapped_Ant_projection %>%
                                        Species == "B. bonaerensis" ~ prey_consumed_yr)) %>% 
   
   ggplot(aes(fill = abbr_binom(Species))) +
-  geom_flat_violin(aes(x = fct_relevel(time_period, "historical"), 
+  geom_flat_violin(aes(x = fct_relevel(time_period, "historic"), 
                        y = krill_consumed_yr/1000
                        #group = time_period
   ), 
   position = position_nudge(x = 0.1, y = 0), alpha = .8) +
-  geom_boxplot(aes(x = fct_relevel(time_period, "historical"), 
+  geom_boxplot(aes(x = fct_relevel(time_period, "historic"), 
                    y = krill_consumed_yr/1000
                    #group = time_period
   ),
   width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  geom_hline(yintercept = 3.79e8, linetype = "dashed") +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
+  #geom_hline(yintercept = 3.79e8, linetype = "dashed") +  # the total biomass of E. Superba, best estimate from Atkinson et al. 2009
   facet_grid(.~Species, scales = "free", space = "free") +
   coord_flip() + 
   scale_fill_manual(values = pal) +
@@ -1273,7 +1273,7 @@ Yearly_krill_ingested_Antarctic <-  d_strapped_Ant_projection %>%
 Yearly_krill_ingested_Antarctic
 
 
-dev.copy2pdf(file="Yearly_krill_ingested_Antarctic_wkrillpop.pdf", width=10.75, height=6)
+dev.copy2pdf(file="Yearly_krill_ingested_Antarctic.pdf", width=10.75, height=6)
 
 
 
