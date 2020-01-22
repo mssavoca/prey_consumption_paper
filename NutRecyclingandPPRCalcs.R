@@ -19,7 +19,7 @@ library(ggpubr)
 
 
 # formula for standard error
-SE = function(x){sd(x)/sqrt(sum(!is.na(x)))}
+SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
 # Abbreviate a binomial e.g. Balaenoptera musculus -> B. musculus
 abbr_binom = function(binom) {
@@ -351,7 +351,7 @@ NandP_plot <-  d_nut_summ_combined %>%
                fill = Region), stat = "identity") +
   facet_grid(time_rec~element, scales = "free", space = "free") +
   #scale_y_log10(labels = scales::comma) +
-  scale_fill_manual(values = c("navy", "olivedrab")) +
+  #scale_fill_manual(values = c("navy", "olivedrab")) +
   labs(x = "Species",
        y = "") + 
   theme_classic(base_size = 20) +
@@ -363,6 +363,7 @@ nut_plot <- ggarrange(Fe_plot, NandP_plot,
                       font.label = list(size = 18),
                       legend = "none",
                       widths = c(1,2), 
+                      heights = c(2,3),
                       ncol = 2, nrow = 1)
 nut_plot
 
@@ -707,7 +708,7 @@ cetacean_data <- left_join(OdontoceteData, RorqualData, by = c("ID")) %>%
   #drop_na(Species) %>% 
   mutate(feeding_rate = TotalFeedingEvents / TotalTagTime_h,    # FEEDING RATE
          SpeciesCode = substr(ID,1,2),
-         geoMeanNULL_wt_g_DC = case_when(
+           geoMeanNULL_wt_g_DC = case_when(
            Species =="Balaenoptera musculus" ~ 0.629646079*79862.436,        # kg to g multiply by 1000, m3 to l divide by 1000, so they cancel each other out; The second number is the Med_recalc_L from vol_data_species
            Species =="Balaenoptera physalus" ~ 0.620866221*60010.441,        # data from BaleenWhaleForagingDistBigKrill100Bins.xlsx
            Species =="Megaptera novaeangliae" ~ 0.608799363*25683.815,

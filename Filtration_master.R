@@ -447,12 +447,12 @@ filter(Region == "Eastern North Pacific", ID != "bw180904-44") %>%
   
 All_droned_lengths <- filtration_master %>% 
   #filter(SpeciesCode %in% c("bw", "bp", "mn")) %>% 
-  filter(ID != "bw180904-44") %>% 
+  filter(ID != "bw180904-44", SpeciesCode != "be") %>% 
   group_by(ID, Species) %>% 
   summarise(whaleLength = first(whaleLength)) %>% 
   ungroup %>% 
-  mutate(sp_lbl = factor(abbr_binom(Species)) %>% fct_rev) %>% 
-  ggplot(aes(x = sp_lbl, 
+  #mutate(sp_lbl = factor(abbr_binom(Species)) %>% fct_rev) %>% 
+  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae","B. physalus", "B. musculus"), 
              y = whaleLength,
              fill = abbr_binom(Species))) +
   geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
@@ -631,11 +631,8 @@ d_strapped <- filtration_master %>%
   group_by(Species, SpeciesCode, prey_general, Year, Region) %>% 
   group_modify(sample_rates) %>% 
   ungroup %>% 
-  left_join(pop_data, by = "Species")
-
-
+  left_join(pop_data, by = "Species") %>% 
 #Adding in krill energy density in kJ/kg; see scaling paper supplement
-d_strapped <-  d_strapped %>% 
   mutate(EnDens_hyp_low = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_hyp_low_kg,
                                     Region != "Antarctic" ~ 3370*prey_mass_per_day_hyp_low_kg),
          EnDens_best_low = case_when(Region == "Antarctic" ~ 4575*prey_mass_per_day_best_low_kg,
@@ -1404,6 +1401,271 @@ dev.copy2pdf(file="Fig_4_krill_consume_hist_pop.pdf", width=11, height=12)
 
 
 
+# Figure 5, Nutrient recycling calculations ----
+
+d_Ant_nutrients <- d_strapped_Ant_projection %>% 
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  # Taken from fig 3 pre-code
+  filter(daily_rate >5) %>%  
+  #taking the average of Dave's two distributions
+  mutate(prey60_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*60,
+         prey90_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*90,
+         prey120_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*120,
+         prey150_currpop = prey_mass_per_day_best_kg*`Southern hemisphere population estimate (Christensen 2006)`*150,
+         prey60_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*60,
+         prey90_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*90,
+         prey120_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*120,
+         prey150_histpop = prey_mass_per_day_best_kg*`Southern hemisphere historic estimate (Christensen 2006)`*150) %>%
+  pivot_longer(cols = c("prey60_currpop", "prey90_currpop", "prey120_currpop", "prey150_currpop",
+                        "prey60_histpop", "prey90_histpop", "prey120_histpop", "prey150_histpop"),
+               names_to = "feeding_days",
+               values_to = "krill_consumed_yr") %>% 
+  
+  mutate(
+    time_rec = ifelse(str_detect(feeding_days, "hist"), "historic", "current"),
+    feeding_days = case_when(
+      feeding_days %in% c("prey60_currpop", "prey60_histpop") ~ "60 days feeding",
+      feeding_days %in% c("prey90_currpop", "prey90_histpop") ~ "90 days feeding",
+      feeding_days %in% c("prey120_currpop", "prey120_histpop") ~ "120 days feeding",
+      feeding_days %in% c("prey150_currpop", "prey150_histpop") ~ "150 days feeding")) %>% 
+  
+  dplyr::select(Species, feeding_days, krill_consumed_yr, time_rec) %>% 
+  mutate(Fe_best_est_kg = Fe_calc_kg(krill_consumed_yr),
+         N_best_est_kg = N_calc_kg(krill_consumed_yr),
+         P_best_est_kg = P_calc_kg(krill_consumed_yr),
+         C_respired = krill_consumed_yr*(0.45*0.75))
+
+
+# summary table for nutrients
+d_Ant_nutrients_summ <- d_Ant_nutrients %>% 
+  filter(time_rec == "historical") %>% 
+  group_by(Species) %>% 
+  summarise(Fe_med_kg = mean(Fe_best_est_kg),
+            C_produced_Mt = ((mean(Fe_best_est_kg)*0.75)/1e9)*5e4,
+            C_respired_Mt  = mean(C_respired)/1e9,
+            Total_C_exported_Mt = C_produced_Mt - C_respired_Mt)
+
+pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
+Fe_recycled_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = Species, 
+                   y = Fe_best_est_kg/1000,
+                   fill = time_rec),
+               width = .5, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Estimated Fe recycled'~(tonnes~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Fe_recycled_Antarctic
+
+Carbon_production_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+                   y = ((Fe_best_est_kg*0.75)/1e9)*5e4,   #From Lavery et al 2010 Proc Roy Soc B
+                   fill = time_rec),
+               width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Fe-induced C producton'~(Mt~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic")) 
+Carbon_production_Antarctic
+
+Carbon_respired_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+                   y = (C_respired/1e9),   #From Lavery et al 2010 Proc Roy Soc B
+                   fill = time_rec),
+               width = .5, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 100), breaks = c(0, 1, 10, 100)) +
+  labs(x = "Species",
+       y = bquote('Estimated C respired'~(Mt~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Carbon_respired_Antarctic
+
+
+Carbon_flux_Antarctic <- ggplot(data = d_Ant_nutrients) +
+  geom_boxplot(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+                   y = (((Fe_best_est_kg*0.75)/1000)*5e4/1e6) - C_respired/1e9 ,   #From Lavery et al 2010 Proc Roy Soc B
+                   fill = time_rec),
+               width = .5, guide = TRUE, outlier.shape = NA, alpha = 0.5) +
+  #facet_grid(time_rec~feeding_days, scales = "free", space = "free") +
+  #coord_flip() + 
+  #scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma) +
+  labs(x = "Species",
+       y = bquote('Estimated C exported'~(Mt~yr^-1)),
+       fill = "Population") + 
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Carbon_flux_Antarctic
+
+#Doesnt work out, will do manually
+C_plot <- ggarrange(Carbon_production_Antarctic, Carbon_respired_Antarctic, Carbon_flux_Antarctic,
+                    labels = c("A", "B", "C"), # THIS IS SO COOL!!
+                    font.label = list(size = 18),
+                    legend = "none",
+                    widths = c(1,2), 
+                    ncol = 1, nrow = 3)
+C_plot
+
+
+d_summ_Ant_nutrients <- d_Ant_nutrients %>% 
+  group_by(Species, time_rec) %>%
+  summarise(
+    Fe_best_est_t = median(Fe_best_est_kg)/1000,
+    Fe_IQR_25 = round(quantile(Fe_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_IQR_75 = round(quantile(Fe_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    N_best_est_t = median(N_best_est_kg)/1000,
+    N_IQR_25 = round(quantile(N_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    N_IQR_75 = round(quantile(N_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    P_best_est_t = median(P_best_est_kg)/1000,
+    P_IQR_25 = round(quantile(P_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    P_IQR_75 = round(quantile(P_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2)
+  ) %>% 
+  unite("Fe recycled (t pop yr) IQR", 
+        c(Fe_IQR_25, Fe_IQR_75), sep = "-") %>%
+  unite("N recycled (t pop yr) IQR", 
+        c(N_IQR_25, N_IQR_75), sep = "-") %>%
+  unite("P recycled (t pop yr) IQR", 
+        c(P_IQR_25, P_IQR_75), sep = "-") %>% 
+  mutate(Region = "Antarctic") 
+
+
+
+# Creates nutrient recycling and PPR estimates for NON-ANTARCTIC data and projection ----
+d_nonAnt_nutrients <- d_strapped %>% 
+  filter(Region != "Antarctic") %>% 
+  pivot_longer(cols = c(prey_mass_per_day_best_low_kg, prey_mass_per_day_best_upper_kg),
+               names_to = "best_prey_est",
+               values_to = "prey_mass_per_day_best_kg") %>% 
+  
+  # Taken from fig 3 pre-code
+  filter(daily_rate >5) %>%  
+  #taking the average of Dave's two distributions
+  mutate(prey60_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*60,
+         prey90_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*90,
+         prey120_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*120,
+         prey150_currpop = prey_mass_per_day_best_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*150,
+         prey60_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*60,
+         prey90_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*90,
+         prey120_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*120,
+         prey150_histpop = prey_mass_per_day_best_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*150) %>%
+  pivot_longer(cols = c("prey60_currpop", "prey90_currpop", "prey120_currpop", "prey150_currpop",
+                        "prey60_histpop", "prey90_histpop", "prey120_histpop", "prey150_histpop"),
+               names_to = "feeding_days",
+               values_to = "prey_consumed_yr") %>% 
+  
+  mutate(
+    time_rec = ifelse(str_detect(feeding_days, "hist"), "historic", "current"),
+    feeding_days = case_when(
+      feeding_days %in% c("prey60_currpop", "prey60_histpop") ~ "60 days feeding",
+      feeding_days %in% c("prey90_currpop", "prey90_histpop") ~ "90 days feeding",
+      feeding_days %in% c("prey120_currpop", "prey120_histpop") ~ "120 days feeding",
+      feeding_days %in% c("prey150_currpop", "prey150_histpop") ~ "150 days feeding"),
+    krill_consumed_yr = case_when(Species == "B. physalus" ~ prey_consumed_yr*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
+                                  Species == "B. musculus" ~ prey_consumed_yr,
+                                  Species == "M. novaeangliae" ~ prey_consumed_yr*0.55)) %>% 
+  
+  dplyr::select(Species, feeding_days, krill_consumed_yr, time_rec) %>% 
+  mutate(Fe_best_est_kg = Fe_calc_kg(krill_consumed_yr),
+         N_best_est_kg = N_calc_kg(krill_consumed_yr),
+         P_best_est_kg = P_calc_kg(krill_consumed_yr),
+         C_respired = krill_consumed_yr*(0.45*0.75)) %>% 
+  filter(!is.na(krill_consumed_yr)) 
+
+
+d_summ_nonAnt_nutrients <- d_nonAnt_nutrients %>% 
+  group_by(Species, time_rec) %>%
+  summarise(
+    Fe_best_est_t = median(Fe_best_est_kg)/1000,
+    Fe_IQR_25 = round(quantile(Fe_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_IQR_75 = round(quantile(Fe_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    N_best_est_t = median(N_best_est_kg)/1000,
+    N_IQR_25 = round(quantile(N_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    N_IQR_75 = round(quantile(N_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2),
+    P_best_est_t = median(P_best_est_kg)/1000,
+    P_IQR_25 = round(quantile(P_best_est_kg, probs = 0.25, na.rm = TRUE)/1000, 2),
+    P_IQR_75 = round(quantile(P_best_est_kg, probs = 0.75, na.rm = TRUE)/1000, 2)
+  ) %>% 
+  unite("Fe recycled (t pop yr) IQR", 
+        c(Fe_IQR_25, Fe_IQR_75), sep = "-") %>%
+  unite("N recycled (t pop yr) IQR", 
+        c(N_IQR_25, N_IQR_75), sep = "-") %>%
+  unite("P recycled (t pop yr) IQR", 
+        c(P_IQR_25, P_IQR_75), sep = "-") %>% 
+  mutate(Region = "non-Antarctic")
+
+
+
+# Combining summary tables for figure
+
+d_nut_summ_combined <- bind_rows(d_summ_Ant_nutrients, d_summ_nonAnt_nutrients) %>% 
+  pivot_longer(cols = c(Fe_best_est_t, N_best_est_t, P_best_est_t),
+               names_to = "element",
+               values_to = "tons excreted") %>% 
+  mutate(element = ifelse(str_detect(element, "Fe"), "Total iron", 
+                          ifelse(str_detect(element, "N"), "Total nitrogen", "Total phosphorus"))
+  ) %>% 
+  select(c(Species, time_rec, Region, element, `tons excreted`)) 
+
+
+
+Fe_plot <-  d_nut_summ_combined %>% 
+  filter(element == "Total iron") %>% 
+  ggplot() +
+  geom_bar(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+               y = `tons excreted`, 
+               fill = time_rec), stat = "identity") +
+  facet_grid(time_rec~element, scales = "free", space = "free") +
+  scale_y_continuous(labels = scales::comma) +
+  #scale_fill_manual(values = c("navy", "olivedrab")) +
+  labs(x = "Species",
+       y = bquote('Estimated quantity excreted'~(t~yr^-1))) + 
+  theme_classic(base_size = 20) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+Fe_plot
+
+
+NandP_plot <-  d_nut_summ_combined %>% 
+  filter(element != "Total iron") %>% 
+  ggplot() +
+  geom_bar(aes(x = fct_relevel(Species, "B. bonaerensis", "M. novaeangliae", "B. physalus"), 
+               y = `tons excreted`, 
+               fill = time_rec), stat = "identity") +
+  facet_grid(time_rec~element, scales = "free", space = "free") +
+  scale_y_continuous(labels = scales::comma) +
+  #scale_fill_manual(values = c("navy", "olivedrab")) +
+  labs(x = "Species",
+       y = "") + 
+  theme_classic(base_size = 20) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"))
+NandP_plot
+
+nut_plot <- ggarrange(Fe_plot, NandP_plot,
+                      #labels = c("A", "B"), # THIS IS SO COOL!!
+                      font.label = list(size = 18),
+                      legend = "none",
+                      widths = c(1.25,2), 
+                      #heights = c(1,1),
+                      ncol = 2, nrow = 1)
+nut_plot
 
 
 
@@ -1970,22 +2232,23 @@ dev.copy2pdf(file="Yearly_krill_ingested_SH_pop.pdf", width=11, height=12)
 # )
 #   
 # example of what a blue whale m3 krill density distribution looks like ----
-# index = 1:10000
-# MRY_hyp_low_prey_dens_m3 <- rlnorm(1e4, log(1.05) + log(0.17),   log(1.8))  # this hypothetical low distribution used extremely large ENP krill (28mm); AND target strength for E. superba, which is bigger than 28mm 
-# MRY_best_lower_prey_dens_m3 <- rlnorm(1e4, log(0.8),  log(1.9)) 
-# MRY_best_upper_prey_dens_m3 <- rlnorm(1e4, log(1.6),  log(1.3)) 
-# ex_prey_dens <- as.data.frame(cbind(index, MRY_hyp_low_prey_dens_m3, MRY_best_lower_prey_dens_m3, MRY_best_upper_prey_dens_m3))
-# 
-# ex_prey_dens <- ggplot(ex_prey_dens) + 
-#   #geom_histogram(binwidth = 0.1, fill = "gray80") +
-#   #geom_density(color = "blue") +
-#   #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray60") +
-#   #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray20") +
-#   geom_histogram(aes(MRY_best_lower_prey_dens_m3), binwidth = 0.1, color = "blue") +
-#   #geom_freqpoly(aes(MRY_best_upper_prey_dens_m3), binwidth = 0.1, color = "red") +
-#   labs(x = bquote('krill biomass'~(kg~per~m^3))) +
-#   theme_classic(base_size = 18)
-# ex_prey_dens
+index = 1:10000
+#MRY_hyp_low_prey_dens_m3 <- rlnorm(1e4, log(1.05) + log(0.17),   log(1.8))  # this hypothetical low distribution used extremely large ENP krill (28mm); AND target strength for E. superba, which is bigger than 28mm
+MRY_best_lower_prey_dens_m3 <- rlnorm(1e4, log(0.84),  log(1.87))
+MRY_best_upper_prey_dens_m3 <- rlnorm(1e4, log(1.22),  log(1.36))
+ex_prey_dens <- as.data.frame(cbind(index, MRY_hyp_low_prey_dens_m3, MRY_best_lower_prey_dens_m3, MRY_best_upper_prey_dens_m3))
+
+ex_prey_dens <- ggplot(ex_prey_dens) +
+  #geom_histogram(binwidth = 0.1, fill = "gray80") +
+  #geom_density(color = "blue") +
+  #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray60") +
+  #geom_freqpoly(aes(MRY_hyp_low_prey_dens_m3), binwidth = 0.1, color = "gray20") +
+  geom_histogram(aes(MRY_best_lower_prey_dens_m3), binwidth = 0.1, color = "blue", alpha = 0.8) +
+  geom_histogram(aes(MRY_best_upper_prey_dens_m3), binwidth = 0.1, color = "red", alpha = 0.5) +
+  xlim(0,6) +
+  labs(x = bquote('krill biomass'~(kg~per~m^3))) +
+  theme_classic(base_size = 18)
+ex_prey_dens
 
 
 
