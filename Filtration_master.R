@@ -15,7 +15,7 @@ library(MuMIn)
 library(ggpubr)
 
 
-SE = function(x){sd(x)/sqrt(sum(!is.na(x)))}
+SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
 # Abbreviate a binomial e.g. Balaenoptera musculus -> B. musculus
 abbr_binom <- function(binom) {
@@ -447,7 +447,7 @@ filter(Region == "Eastern North Pacific", ID != "bw180904-44") %>%
   
 All_droned_lengths <- filtration_master %>% 
   #filter(SpeciesCode %in% c("bw", "bp", "mn")) %>% 
-  filter(ID != "bw180904-44", SpeciesCode != "be") %>% 
+  filter(ID != "bw180904-44") %>% 
   group_by(ID, Species) %>% 
   summarise(whaleLength = first(whaleLength)) %>% 
   ungroup %>% 
@@ -471,7 +471,8 @@ dev.copy2pdf(file="All_droned_lengths.pdf", width=12, height=8)
 
 
 Engulfment_capacity <- filtration_master %>% 
-  #filter(ID != "bw180904-44") %>% 
+  #filter(ID != "bw180904-44") %>%
+  filter(SpeciesCode != "be") %>% 
   drop_na(whaleLength) %>% 
   group_by(ID, Species, Engulfment_L) %>% 
   summarise(whaleLength = first(whaleLength)) %>%
@@ -860,7 +861,7 @@ dev.copy2pdf(file="Daily_rate_nonAntarctic.pdf", width=16, height=6)
 
 Daily_filtration_nonAntarctic <-  d_strapped %>% 
   filter(daily_rate >5,
-         Region != "Antarctic",
+         #Region != "Antarctic",
          prey_general == "Krill") %>%   #%in% c("Fish", "Krill")) %>%  
   ggplot(aes(x = fct_reorder(abbr_binom(Species), measured_engulfment_cap_m3*daily_rate), y = measured_engulfment_cap_m3*daily_rate, 
                          fill = abbr_binom(Species))) +
