@@ -226,7 +226,7 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       yday = lubridate::yday(day)
     )
   
-  browser()
+  #browser()
   # MATT: change rate_estimates to biomass_estimates
   daily_rates <- krill_biomass_estimates %>% 
     left_join(daylengths, by = "region") %>% 
@@ -272,10 +272,10 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
 
 aug1 <- 213
 krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, aug1, 120)  %>% 
-  mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_biomass_kg_best_low*4575,
-                                                    region == "Temperate" ~ daily_biomass_kg_best_low*3628),
-         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_biomass_kg_best_high*4575,
-                                                     region == "Temperate" ~ daily_biomass_kg_best_high*3628),
+  mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
+                                                    region == "Temperate" ~ daily_consumption_high_kg*3628),
+         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
+                                                     region == "Temperate" ~ daily_consumption_high_kg*3628),
          Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/Mass_est_kg,
          Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg,
   )
@@ -284,7 +284,7 @@ krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, aug1, 120)  %>
 krill_daily %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "bw") %>%
-  pull(daily_biomass_kg_best_high) %>%
+  pull(daily_consumption_low_kg) %>%
   summary()
 
 
@@ -346,15 +346,18 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
     left_join(daylengths, by = "region") %>% 
     # MATT: change daily_rate to daily_biomass
     group_by(SpeciesCode, region) %>% 
-    mutate(fish_biomass_best_high_m3 = rnorm(n(), 0.375, 0.243),
-           fish_biomass_best_low_m3 = rnorm(n(), 0.375, 0.243)*0.29,
-           daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
+    mutate(
+      # fish_biomass_best_high_m3 = rnorm(n(), 0.375, 0.243),
+      #      fish_biomass_best_low_m3 = rnorm(n(), 0.375, 0.243)*0.29,
+      daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
     ungroup() %>% 
-    mutate(daily_biomass_kg_best_low = fish_biomass_best_low_m3*Engulf_cap_m3*daily_rate,
-           daily_biomass_kg_best_high = fish_biomass_best_high_m3*Engulf_cap_m3*daily_rate)
+    mutate(
+      daily_mean_low_kg = mean((rnorm(floor(daily_rate), 0.375, 0.243))*0.29),
+      daily_mean_high_kg = mean(rnorm(floor(daily_rate), 0.375, 0.243)),
+      daily_consumption_low_kg = daily_mean_low_kg*Engulf_cap_m3*daily_rate, 
+      daily_consumption_high_kg = daily_mean_high_kg*Engulf_cap_m3*daily_rate) 
   
-  
-  
+
   # prey_biomass = rlnorm log mean 
   
   # daily_rate_summ <- daily_rates %>% 
@@ -381,8 +384,8 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
 
 aug1 <- 213
 fish_daily <- estimate_daily(daily_rates_fish, latitudes, aug1, 120) %>% 
-  mutate(Total_energy_intake_best_high_kJ = daily_biomass_kg_best_high*6000,
-         Total_energy_intake_best_low_kJ = daily_biomass_kg_best_low*6000,
+  mutate(Total_energy_intake_best_high_kJ = daily_consumption_high_kg*6000,
+         Total_energy_intake_best_low_kJ = daily_consumption_low_kg*6000,
          Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/Mass_est_kg,
          Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg,
   )
@@ -390,11 +393,11 @@ fish_daily <- estimate_daily(daily_rates_fish, latitudes, aug1, 120) %>%
 
 fish_daily %>%  
   group_by(SpeciesCode) %>% 
-  # filter(SpeciesCode == "mn") %>% 
-  # pull(Mass_specifc_energy_intake_kJ) %>% 
+  # filter(SpeciesCode == "mn") %>%
+  # pull(Mass_specifc_energy_intake_best_high_kJ) %>%
   # summary()
   
-ggplot(aes(daily_biomass_kg_best_high)) + 
+ggplot(aes(daily_consumption_high_kg)) + 
   geom_density(aes(fill = SpeciesCode), alpha = 0.2) +
   facet_wrap(~SpeciesCode, scales = "free_x") +
   xlim(0,5000)
@@ -423,12 +426,12 @@ summ_prey_stats <- fish_daily %>%  # toggle between fish and krill
     # med_daily_consumpt_hyp_low = round(median(prey_mass_per_day_hyp_low_kg), 2),
     # med_daily_consumpt_hyp_low_IQR25 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.25, na.rm = TRUE), 2),
     # med_daily_consumpt_hyp_low_IQR75 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.75, na.rm = TRUE), 2),
-    med_daily_consumpt_best = round(median(daily_biomass_kg_best_low), 2),
-    med_daily_consumpt_best_IQR25 = round(quantile(daily_biomass_kg_best_low, probs = 0.25, na.rm = TRUE), 2), 
-    med_daily_consumpt_best_IQR75 = round(quantile(daily_biomass_kg_best_low, probs = 0.75, na.rm = TRUE), 2), 
-    med_daily_consumpt_top50 = round(median(daily_biomass_kg_best_high), 2),
-    med_daily_consumpt_top50_IQR25 = round(quantile(daily_biomass_kg_best_high, probs = 0.25, na.rm = TRUE), 2), 
-    med_daily_consumpt_top50_IQR75 = round(quantile(daily_biomass_kg_best_high, probs = 0.75, na.rm = TRUE), 2)) %>% 
+    med_daily_consumpt_best = round(median(daily_consumption_low_kg, na.rm = TRUE), 2),
+    med_daily_consumpt_best_IQR25 = round(quantile(daily_consumption_low_kg, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_consumpt_best_IQR75 = round(quantile(daily_consumption_low_kg, probs = 0.75, na.rm = TRUE), 2), 
+    med_daily_consumpt_top50 = round(median(daily_consumption_high_kg, na.rm = TRUE), 2),
+    med_daily_consumpt_top50_IQR25 = round(quantile(daily_consumption_high_kg, probs = 0.25, na.rm = TRUE), 2), 
+    med_daily_consumpt_top50_IQR75 = round(quantile(daily_consumption_high_kg, probs = 0.75, na.rm = TRUE), 2)) %>% 
   #unite("Daily consumption lower estimate IQR", c(med_daily_consumpt_hyp_low_IQR25, med_daily_consumpt_hyp_low_IQR75), sep = "-") %>% 
   unite("Daily consumption IQR", c(med_daily_consumpt_best_IQR25, med_daily_consumpt_best_IQR75), sep = "-") %>% 
   unite("Daily consumption Top 50% IQR", c(med_daily_consumpt_top50_IQR25, med_daily_consumpt_top50_IQR75), sep = "-")
