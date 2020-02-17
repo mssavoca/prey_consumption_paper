@@ -207,18 +207,18 @@ v_data <- read_csv("MWmeasurements.csv") %>%
 # # # v_data$L <- v_data$MW*0.9766  #creates column that converts MW (kg) to liters
 
 # Allometric equations from Shirel's paper----
-# creating fucntions from Shirel's paper for MW (in kg) for engulfment capacity in liters for each species where we have a known length
+#UPDATED
+# creating fucntions using new data from Shirel and DC for for engulfment capacity in m3 for each species where we have a known length
+
 engulf_allo <- tribble(
   ~SpeciesCode, ~slope,   ~intercept,
-  "bb",     3.10910,  0.69969,
-  "be",     3.1453,   0.5787,
-  "bs",     3.05591,   0.77219,
-  "bp",     3.54883,  0.15604,
-  "bw",     3.667316, -0.014078,
-  "mn",     3.24603,  0.85934
+  "bb",     3.11151,  -2.31328,
+  "be",     3.1206,   -2.4039,
+  "bs",     3.05563,   -2.23809,
+  "bp",     3.54883,  -2.85446,
+  "bw",     3.667115, -3.024580,
+  "mn",     3.24603,  -2.15150
 )
-
-
 
 
 # Prey data from Dave Cade, recieved on 10/19 ----
@@ -287,7 +287,8 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
     # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
     # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
   ) %>% 
-  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
+  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) %>% 
+  mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(10^.x))
 
 
 WAP_krill_data <- read_csv("AntarcticKrillData (1).csv") %>% 
@@ -308,20 +309,62 @@ SA_krill_data <- read_csv("SouthAfricaKrillData (1).csv") %>%
     Region = "South Africa") %>% 
   rename(SpeciesCode = "Species") 
 
+
+# combining ENP and SA prey data
+ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
+  #mutate(Study_Area2 = Study_Area) %>% 
+  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
+  #rename(Study_Area = Study_Area2) %>% 
+  mutate(
+    `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+    Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
+    `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    Study_Area = NA
+    # 
+    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
+    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
+    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
+    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+  ) %>% 
+  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
+
+
 All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data) 
 
-All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data, SA_krill_data) 
+All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data, SA_krill_data)
 
 
+a = tibble(x = (rlnorm(100000, 1.05, 4.28))) %>% 
+  ggplot(aes(x)) +
+  geom_density() +
+  xlim(0,5)
+a
 
 
 # Whale population data---- 
 #Current data from IUCN 2019 Redlist, whaling data compiled in Rocha et al. 2014
-pop_data <- read_excel("Filtration project_Whale population and feeding information.xlsx", sheet = 1)
+pop_data <- read_excel("Filtration project_Whale population and feeding information.xlsx", sheet = 1) %>%
+  mutate(SpeciesCode = case_when(Species == "Balaenoptera musculus" ~ "bw",
+                                 Species == "Balaenoptera physalus" ~ "bp",
+                                 Species == "Megaptera novaeangliae" ~ "mn",
+                                 Species == "Balaenoptera borealis" ~ "bs",
+                                 Species == "Balaenoptera edeni" ~ "be",
+                                 Species == "Balaenoptera acutorostrata" ~ "ba",
+                                 Species == "Balaenoptera bonaerensis" ~ "bb",
+                                 Species == "Eubalaena glacialis" ~ "eg",
+                                 Species == "Eubalaena japonica" ~ "ej",
+                                 Species == "Eubalaena australis" ~ "ea",
+                                 Species == "Balaena mysticetus" ~ "bm"
+                                 ))
 
 
 #Read in tag guide----
-tag_guide <- read_excel("TAG GUIDE_9.5.19.xlsx", skip = 2) %>%  # Skips first two rows
+tag_guide <- read_excel("TAG GUIDE_2.11.20.xlsx", skip = 2) %>%  # Skips first two rows
   rename(Study_Area = `Study_Area     _`,
          SpeciesCode = `Spec      _`,
          whaleLength = `Drone  _`) 
@@ -371,8 +414,8 @@ filtration_master <- lunge_rates_all %>%
   # Calculate engulfment volumes
   mutate(
     BestLengthEst = coalesce(whaleLength, med_TLm),
-    Engulfment_L = BestLengthEst ^ slope * 10 ^ intercept * 0.9766,
-    EngulfVolPerHr = Engulfment_L*Rate) %>%     #volume engulfed in liters per hour
+    Engulfment_m3 = BestLengthEst ^ slope * 10 ^ intercept,
+    EngulfVolPerHr = Engulfment_m3*Rate) %>%     #volume engulfed in m3 per hour
   # adding in krill prey data. Remember: biomass is in kg/m3 here, need to convert back to log to average by region
   left_join(All_krill_data_ENPcombined, by = c("SpeciesCode", "Region")) %>% 
   mutate(Study_Area = coalesce(Study_Area.x, Study_Area.y)) %>% 
@@ -414,9 +457,9 @@ length_MW <- filtration_master %>%
     med_length = round(median(whaleLength), 2),
     IQR25_length = round(quantile(whaleLength, probs = 0.25, na.rm = TRUE), 2),
     IQR75_length = round(quantile(whaleLength, probs = 0.75, na.rm = TRUE), 2),
-    med_engulf_cap = round(median(Engulfment_L/1000),2),
-    IQR25_engulf_cap = round(quantile(Engulfment_L, probs = 0.25, na.rm = TRUE)/1000, 2),
-    IQR75_engulf_cap = round(quantile(Engulfment_L, probs = 0.75, na.rm = TRUE)/1000, 2)) %>% 
+    med_engulf_cap = round(median(Engulfment_m3),2),
+    IQR25_engulf_cap = round(quantile(Engulfment_m3, probs = 0.25, na.rm = TRUE), 2),
+    IQR75_engulf_cap = round(quantile(Engulfment_m3, probs = 0.75, na.rm = TRUE), 2)) %>% 
   unite("Length IQR", c(IQR25_length, IQR75_length), sep = "-") %>% 
   unite("Engulf Cap IQR", c(IQR25_engulf_cap, IQR75_engulf_cap), sep = "-") %>% 
   arrange(med_length)
@@ -699,6 +742,8 @@ summ_EnDens_krill <- d_strapped %>%
 # preliminary plots ----
 
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
+
 
 
 Measured_length <- ggplot(d_strapped, 
@@ -1683,6 +1728,19 @@ nut_plot
 
 
 # Old code below here ----
+
+
+# creating fucntions from Shirel's paper for MW (in kg) for engulfment capacity in liters for each species where we have a known length
+# Old numbers directly from Kahane-Rapport and Goldbogen 2018
+engulf_allo <- tribble(
+  ~SpeciesCode, ~slope,   ~intercept,
+  "bb",     3.10910,  0.69969,
+  "be",     3.1453,   0.5787,
+  "bs",     3.05591,   0.77219,
+  "bp",     3.54883,  0.15604,
+  "bw",     3.667316, -0.014078,
+  "mn",     3.24603,  0.85934
+)
 
 #Historical numbers
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
