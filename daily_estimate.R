@@ -1,7 +1,16 @@
 library(tidyverse)
 library(maptools)
 library(readxl)
+library(ggpubr)
 
+SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
+
+# Abbreviate a binomial e.g. Balaenoptera musculus -> B. musculus
+abbr_binom <- function(binom) {
+  paste(str_sub(binom, 1, 1), 
+        str_extract(binom, " .*"), 
+        sep = ".")
+}
 
 # stuff from Max to generate data ----
 
@@ -10,14 +19,82 @@ load("tag_guide4.RData")
 load("rates.RData")
 load("rates[1].RData")
 
+# droned whales---
+# non-tagged unique individuals from KC
+KC_nontagged_lengths <- read_xlsx("Whales_for_Savoca_untagged_fromKC.xlsx", skip = 1) %>% 
+  rename(length = "Max",
+         name = "Animal_ID") %>% 
+  mutate(SpeciesCode = case_when(Species == "Antarctic minke" ~ "bb",
+                                 Species == "blue" ~ "bw",
+                                 Species == "humpback" ~ "mn"))
+
+
 # bringing in whale length data from Paolo; using allometric equations from Shirel to convert to engulfment capacity
+# Allometric equations from Shirel UPDATED from her paper
+# creating fucntions using new data from Shirel and DC for for engulfment capacity in m3 for each species where we have a known length
+
+engulf_allo <- tribble(
+  ~SpeciesCode, ~slope,   ~intercept,
+  "bb",     3.11151,  -2.31328,
+  "be",     3.1206,   -2.4039,
+  "bs",     3.05563,   -2.23809,
+  "bp",     3.54883,  -2.85446,
+  "bw",     3.667115, -3.024580,
+  "mn",     3.24603,  -2.15150
+)
 whale_lengths <- read.csv("whale_masses.csv") %>% 
   rename(SpeciesCode = "species") %>% 
+  full_join(select(KC_nontagged_lengths, name, length, SpeciesCode)) %>% 
   left_join(engulf_allo, by = "SpeciesCode") %>% 
-  mutate(Engulfment_m3 = length ^ slope * 10 ^ intercept)
+  mutate(Engulfment_m3 = length ^ slope * 10 ^ intercept,
+         #numbers from Lockyer 1976
+         Lockyer_a = case_when(SpeciesCode == "bb" ~ 0.0496,   # From Table 1, the rest from Table 2
+                               SpeciesCode == "be" ~ 0.0122,
+                               SpeciesCode == "mn" ~ 0.0158,
+                               SpeciesCode == "bs" ~ 0.0242,
+                               SpeciesCode == "bp" ~ 0.01265,
+                               SpeciesCode == "bw" ~ 0.0025
+                               ),
+         Lockyer_b = case_when(SpeciesCode == "bb" ~ 2.31,    # From Table 1, the rest from Table 2
+                               SpeciesCode == "be" ~ 2.74,
+                               SpeciesCode == "mn" ~ 2.95,
+                               SpeciesCode == "bs" ~ 2.43,
+                               SpeciesCode == "bp" ~ 2.995,
+                               SpeciesCode == "bw" ~ 3.25
+         ),
+         Lockyer_mass_t = (Lockyer_a*length ^Lockyer_b)*1.06,
+         Species = case_when(
+           SpeciesCode == "bw" ~ "Balaenoptera musculus",
+           SpeciesCode == "bp" ~ "Balaenoptera physalus",
+           SpeciesCode == "mn" ~ "Megaptera novaeangliae",
+           SpeciesCode %in% c("bb","ba") ~ "Balaenoptera bonaerensis", 
+           SpeciesCode == "be" ~ "Balaenoptera edeni",
+           SpeciesCode == "bs" ~ "Balaenoptera borealis")) 
 
-# Add in Bryde's data, MAX NEEDS TO CHECK THIS
+
+
+
+# Add in Bryde's data, MAX NEEDS TO CHECK THIS----
 # Combining day and twilight lunge rates
+# adding in Bryde's deployments from 2018
+Brydes_lunges <- read_csv("Brydes_2018_lunge_rates.csv") %>% 
+  select(ID, study_area, region, prey_general, duration_h, daylight_h, twilight_h, night_h, total_lunges) 
+
+
+Brydes_lunges_long <- Brydes_lunges %>% 
+  pivot_longer(duration_h:night_h, names_to = "Phase", values_to = "Time (hours)") %>% 
+  rename(Study_Area = study_area,
+         Region = region, 
+         Lunges = total_lunges) %>% 
+  mutate(prey_general = "Fish",
+         tag_type = "CATS",
+         Phase = case_when(Phase == "duration_h" ~ "Total",
+                           Phase == "daylight_h" ~ "Day",
+                           Phase == "twilight_h" ~ "Twilight",
+                           Phase == "night_h" ~ "Night"),
+         Rate = Lunges/`Time (hours)`) %>% 
+  mutate_at(vars(Rate), ~replace(., is.infinite(.), 0))
+
 Brydes_lunges_day <- Brydes_lunges_long %>% 
   filter(Phase %in% c("Day", "Twilight")) %>% 
   group_by(ID, Study_Area, Region, prey_general, tag_type) %>% 
@@ -44,7 +121,8 @@ Brydes_lunges_for_join <- Brydes_lunges_long %>%
   select(-c(Study_Area, tag_type, Region))
 
 
-# Dave's KRILL data (from 11/21/19), natural log transformed, which is what we were donig in the prior iteration
+# Dave's KRILL data (from 11/21/19)----
+#natural log transformed, which is what we were donig in the prior iteration
 
 # data projected for Antarctic blue and fin whales
 Krill_data_Ant_projection <- read_excel("AntarcticKrillData (1).xlsx", sheet = 3) %>% 
@@ -76,7 +154,7 @@ All_krill_data_ENPcombined_noSA <- rbind(ENP_krill_data, WAP_krill_data) %>%
 
 
 
-
+# Generate daily rates----
 # combine day and twilight
 combine_rates <- function(df, keys) {
   day_lunges <- df$Lunges[df$Phase == "Day"]
@@ -178,7 +256,7 @@ krill_biomass_estimates <- krill_rate_estimates %>%
   mutate(Engulf_cap_m3 = sample(whale_lengths$Engulfment_m3[whale_lengths$SpeciesCode == SpeciesCode[1]],
                                 size = n(),
                                 replace = TRUE),
-         Mass_est_kg = sample(whale_lengths$mass[whale_lengths$SpeciesCode == SpeciesCode[1]],
+         Mass_est_t = sample(whale_lengths$Lockyer_mass_t[whale_lengths$SpeciesCode == SpeciesCode[1]],
                                 size = n(),
                                 replace = TRUE
     )) %>% 
@@ -273,18 +351,25 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
 aug1 <- 213
 krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, aug1, 120)  %>% 
   mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
-                                                    region == "Temperate" ~ daily_consumption_high_kg*3628),
-         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
+                                                    region == "Temperate" ~ daily_consumption_low_kg*3628),
+         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_high_kg*4575,
                                                      region == "Temperate" ~ daily_consumption_high_kg*3628),
-         Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/Mass_est_kg,
-         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg,
+         Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/(Mass_est_t*1000),
+         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/(Mass_est_t*1000),
+         Species = case_when(
+           SpeciesCode == "bw" ~ "Balaenoptera musculus",
+           SpeciesCode == "bp" ~ "Balaenoptera physalus",
+           SpeciesCode == "mn" ~ "Megaptera novaeangliae",
+           SpeciesCode == "bb" ~ "Balaenoptera bonaerensis", 
+           SpeciesCode == "be" ~ "Balaenoptera edeni",
+           SpeciesCode == "bs" ~ "Balaenoptera borealis")
   )
 
 
 krill_daily %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "bw") %>%
-  pull(daily_consumption_low_kg) %>%
+  pull(daily_consumption_high_kg) %>%
   summary()
 
 
@@ -310,7 +395,7 @@ fish_biomass_estimates <- fish_rate_estimates %>%
   mutate(Engulf_cap_m3 = sample(whale_lengths$Engulfment_m3[whale_lengths$SpeciesCode == SpeciesCode[1]],
                                 size = n(),
                                 replace = TRUE),
-         Mass_est_kg = sample(whale_lengths$mass[whale_lengths$SpeciesCode == SpeciesCode[1]],
+         Mass_est_t = sample(whale_lengths$Lockyer_mass_t[whale_lengths$SpeciesCode == SpeciesCode[1]],
                               size = n(),
                               replace = TRUE))
   
@@ -324,7 +409,7 @@ latitudes <- tribble(
   "Temperate", 36
 )
 
-# Overall daily rate, Modified by MA
+# Overall daily rate, Modified by MATT
 estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
   yday_start <- floor(yday_center - season_len / 2)
   yday_end <- floor(yday_center + season_len / 2)
@@ -352,8 +437,8 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
     ungroup() %>% 
     mutate(
-      daily_mean_low_kg = mean((rnorm(floor(daily_rate), 0.375, 0.243))*0.29),
-      daily_mean_high_kg = mean(rnorm(floor(daily_rate), 0.375, 0.243)),
+      daily_mean_low_kg = mean((rnorm(floor(daily_rate), 0.375, 0.243))*0.29)*7.8,
+      daily_mean_high_kg = mean(rnorm(floor(daily_rate), 0.375, 0.243))*7.8,
       daily_consumption_low_kg = daily_mean_low_kg*Engulf_cap_m3*daily_rate, 
       daily_consumption_high_kg = daily_mean_high_kg*Engulf_cap_m3*daily_rate) 
   
@@ -386,25 +471,55 @@ aug1 <- 213
 fish_daily <- estimate_daily(daily_rates_fish, latitudes, aug1, 120) %>% 
   mutate(Total_energy_intake_best_high_kJ = daily_consumption_high_kg*6000,
          Total_energy_intake_best_low_kJ = daily_consumption_low_kg*6000,
-         Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/Mass_est_kg,
-         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg,
+         Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/(Mass_est_t*1000),
+         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/(Mass_est_t*1000),
+         Species = case_when(
+           SpeciesCode == "mn" ~ "Megaptera novaeangliae",
+           SpeciesCode == "be" ~ "Balaenoptera edeni")
   )
 
 
 fish_daily %>%  
   group_by(SpeciesCode) %>% 
-  # filter(SpeciesCode == "mn") %>%
-  # pull(Mass_specifc_energy_intake_best_high_kJ) %>%
-  # summary()
+  #filter(prey_general == "Fish", species_code != "bp") %>%
+  pull(daily_consumption_high_kg) %>%
+  summary()
   
-ggplot(aes(daily_consumption_high_kg)) + 
+ggplot(aes(daily_consumption_low_kg)) + 
   geom_density(aes(fill = SpeciesCode), alpha = 0.2) +
   facet_wrap(~SpeciesCode, scales = "free_x") +
-  xlim(0,5000)
+  xlim(0,10000)
 p
 
 
 # generating plots and tables for paper ----
+
+pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
+
+#Supplemental figure of whale lengths
+All_droned_lengths <- whale_lengths %>% 
+  filter(!SpeciesCode %in% c("bs", "be")) %>% 
+  #filter(ID != "bw180904-44") %>% 
+  group_by(name, SpeciesCode) %>% 
+  ungroup %>% 
+  #mutate(sp_lbl = factor(abbr_binom(Species)) %>% fct_rev) %>% 
+  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae","B. physalus", "B. musculus"), 
+             y = length,
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.5) +
+  geom_point(position = position_jitter(width = .05), alpha = 0.6) +
+  coord_flip() +
+  scale_fill_manual(values = pal) +
+  labs(x = "Species",
+       y = "Measured length (m)") +
+  theme_classic(base_size = 18) +
+  theme(legend.position = "none",
+        axis.text.y = element_text(face = "italic"))
+All_droned_lengths
+
+dev.copy2pdf(file="All_droned_lengths.pdf", width=12, height=8)
 
 #summary tables of lunges, water filtered, and prey consumed per day (Figure 2)----
 summ_stats_all <- fish_daily %>%    # toggle between fish and krill
@@ -445,17 +560,302 @@ summ_EnDens <- fish_daily %>%
     # med_daily_En_hyp_low = round(median(EnDens_hyp_low/1e6),2),
     # med_daily_En_hyp_low_IQR25 = round(quantile(EnDens_hyp_low/1e6, probs = 0.25, na.rm = TRUE), 2),
     # med_daily_En_hyp_low_IQR75 = round(quantile(EnDens_hyp_low/1e6, probs = 0.75, na.rm = TRUE), 2),
-    med_daily_En_best = round(median(Total_energy_intake_best_low_kJ/1e6), 2),
+    med_daily_En_best = round(median(Total_energy_intake_best_low_kJ/1e6, na.rm = TRUE), 2),
     med_daily_En_best_IQR25 = round(quantile(Total_energy_intake_best_low_kJ/1e6, probs = 0.25, na.rm = TRUE), 2), 
     med_daily_En_best_IQR75 = round(quantile(Total_energy_intake_best_low_kJ/1e6, probs = 0.75, na.rm = TRUE), 2), 
-    med_daily_mass_specific_En_best = round(median(Mass_specifc_energy_intake_best_low_kJ), 2),
-    med_daily_En_top50 = round(median(Total_energy_intake_best_high_kJ/1e6), 2),
+    med_daily_mass_specific_En_best = round(median(Mass_specifc_energy_intake_best_low_kJ, na.rm = TRUE), 2),
+    med_daily_En_top50 = round(median(Total_energy_intake_best_high_kJ/1e6, na.rm = TRUE), 2),
     med_daily_En_top50_IQR25 = round(quantile(Total_energy_intake_best_high_kJ/1e6, probs = 0.25, na.rm = TRUE), 2), 
     med_daily_En_top50_IQR75 = round(quantile(Total_energy_intake_best_high_kJ/1e6, probs = 0.75, na.rm = TRUE), 2),
-    med_daily_mass_specific_En_high = round(median(Mass_specifc_energy_intake_best_high_kJ), 2)) %>% 
+    med_daily_mass_specific_En_high = round(median(Mass_specifc_energy_intake_best_high_kJ, na.rm = TRUE), 2)) %>% 
   #unite("Daily energy intake (GJ) lower estimate IQR", c(med_daily_En_hyp_low_IQR25, med_daily_En_hyp_low_IQR75), sep = "-") %>% 
   unite("Daily energy intake (GJ) IQR", c(med_daily_En_best_IQR25, med_daily_En_best_IQR75), sep = "-") %>% 
   unite("Daily energy intake (GJ) Top 50% IQR", c(med_daily_En_top50_IQR25, med_daily_En_top50_IQR75), sep = "-")
+
+
+# Figure 2 Daily rorqual water filtration & krill consumption per individual ----
+
+#ANTARCTIC
+Daily_rate_Antarctic <- krill_daily %>% 
+  filter(region == "Polar") %>%  
+  ggplot(aes(x = fct_reorder(abbr_binom(Species), daily_rate), y = daily_rate, 
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  #scale_y_continuous(breaks = seq(from = 0, to = 2500, by = 500)) +
+  # facet_grid(prey_general~., scales = "free", space = "free",         # freeing scales doesn't work with flat_violin plots
+  #            labeller = labeller(prey_general = names(c("Fish-feeding", "Krill-feeding")))) +  #Labeller not working
+  labs(x = "Species",
+       y = bquote('Estimated feeding rate'~(lunges~ind^-1~d^-1))) + 
+  #ylim(0, 2000) +
+  scale_y_log10(labels = scales::comma, limits = c(50, 3000), 
+                breaks = c(10,100,250,500,1000,2500)) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_rate_Antarctic
+
+dev.copy2pdf(file="Daily_rate_Antarctic.pdf", width=16, height=6)
+
+
+Daily_filtration_Antarctic <- krill_daily %>% 
+  filter(region == "Polar") %>%   
+  ggplot(aes(x = fct_reorder(abbr_binom(Species), Engulf_cap_m3*daily_rate), y = Engulf_cap_m3*daily_rate, 
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma, breaks = c(100,1000,5000,10000,50000,100000)) +
+  #ylim(0,60000) +
+  labs(x = "Species",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~d^-1))) + 
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_filtration_Antarctic
+
+dev.copy2pdf(file="Daily_filtration_Antarctic.pdf", width=16, height=6)
+
+
+
+Daily_biomass_ingested_Antarctic <- krill_daily %>% 
+  filter(region == "Polar") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
+  
+  ggplot() +
+  # #best-low *our best estimate*
+geom_flat_violin(aes(x = Species, y = daily_consumption_low_kg/1000,
+                     fill = Species), 
+                 position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+geom_boxplot(aes(x = Species, y = daily_consumption_low_kg/1000,
+                 fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
+             position = position_nudge(x = 0.12, y = 0)) +
+# best-upper
+geom_flat_violin(aes(x = Species, y = daily_consumption_high_kg/1000,
+                     fill = Species), 
+                 position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
+                 fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+
+  coord_flip() +
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma, limits = c(0.05, 15), breaks = c(0,1,5,10,15)) +
+  labs(x = "Species",
+       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~d^-1))) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_biomass_ingested_Antarctic
+
+dev.copy2pdf(file="Daily_biomass_ingested_Antarctic.pdf", width=16, height=6)
+
+
+Fig_2_Antarctic <- ggarrange(Daily_rate_Antarctic, Daily_filtration_Antarctic, Daily_biomass_ingested_Antarctic, 
+                             #labels = c("A", "B", "C"), # THIS IS SO COOL!!
+                             font.label = list(size = 18),
+                             legend = "none",
+                             ncol = 1, nrow = 3)
+Fig_2_Antarctic
+
+dev.copy2pdf(file="Fig_2_Antarctic.pdf", width=12, height=18)
+
+
+
+
+#NON-ANTARCTIC
+Daily_rate_nonAntarctic <- krill_daily %>% 
+  filter(region == "Temperate") %>%  
+  ggplot(aes(x = fct_reorder(abbr_binom(Species), daily_rate), y = daily_rate, 
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  #scale_y_continuous(breaks = seq(from = 0, to = 2500, by = 500)) +
+  # facet_grid(prey_general~., scales = "free", space = "free",         # freeing scales doesn't work with flat_violin plots
+  #            labeller = labeller(prey_general = names(c("Fish-feeding", "Krill-feeding")))) +  #Labeller not working
+  labs(x = "Species",
+       y = bquote('Estimated feeding rate'~(lunges~ind^-1~d^-1))) + 
+  #ylim(0, 2000) +
+  scale_y_log10(labels = scales::comma,
+                limits = c(10, 1500), 
+                breaks = c(10,100,250,500,1000)) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_rate_nonAntarctic
+
+dev.copy2pdf(file="Daily_rate_nonAntarctic.pdf", width=16, height=6)
+
+
+Daily_filtration_nonAntarctic <- krill_daily %>% 
+  filter(region == "Temperate") %>%   
+  ggplot(aes(x = fct_reorder(abbr_binom(Species), Engulf_cap_m3*daily_rate), y = Engulf_cap_m3*daily_rate, 
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma,
+                limits = c(250, 60000),
+                breaks = c(500,1000,5000,10000,50000)) +
+  labs(x = "Species",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~d^-1))) + 
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_filtration_nonAntarctic
+
+dev.copy2pdf(file="Daily_filtration_nonAntarctic.pdf", width=16, height=6)
+
+
+
+Daily_biomass_ingested_nonAntarctic <- krill_daily %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
+  
+  ggplot() +
+  # #best-low *our best estimate*
+  geom_flat_violin(aes(x = Species, y = daily_consumption_low_kg/1000,
+                       fill = Species), 
+                   position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = Species, y = daily_consumption_low_kg/1000,
+                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
+               position = position_nudge(x = 0.12, y = 0)) +
+  # best-upper
+  geom_flat_violin(aes(x = Species, y = daily_consumption_high_kg/1000,
+                       fill = Species), 
+                   position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
+                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  
+  coord_flip() +
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma, 
+                limits = c(0.1, 60), 
+                breaks = c(0,1,5,10,25,50)) +
+  labs(x = "Species",
+       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~d^-1))) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_biomass_ingested_nonAntarctic
+
+dev.copy2pdf(file="Daily_biomass_ingested_nonAntarctic.pdf", width=16, height=6)
+
+
+Fig_2_nonAntarctic <- ggarrange(Daily_rate_nonAntarctic, Daily_filtration_nonAntarctic, Daily_biomass_ingested_nonAntarctic, 
+                                #labels = c("D", "E", "F"), # THIS IS SO COOL!!
+                                font.label = list(size = 18),
+                                legend = "none",
+                                ncol = 1, nrow = 3)
+Fig_2_nonAntarctic
+
+dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
+
+
+
+# FISH-FEEDERS, Individual/daily
+Daily_rate_fish <- fish_daily %>% 
+  ggplot(aes(x = fct_reorder(abbr_binom(Species), daily_rate), y = daily_rate, 
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  #scale_y_continuous(breaks = seq(from = 0, to = 2500, by = 500)) +
+  # facet_grid(prey_general~., scales = "free", space = "free",         # freeing scales doesn't work with flat_violin plots
+  #            labeller = labeller(prey_general = names(c("Fish-feeding", "Krill-feeding")))) +  #Labeller not working
+  labs(x = "Species",
+       y = bquote('Estimated feeding rate'~(lunges~ind^-1~d^-1))) + 
+  #ylim(0, 2000) +
+  scale_y_log10(labels = scales::comma,
+                limits = c(1, 500), 
+                breaks = c(1,10,100,250,500)) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_rate_fish
+
+dev.copy2pdf(file="Daily_rate_fish.pdf", width=16, height=6)
+
+
+Daily_filtration_fish <- fish_daily %>% 
+  filter(region == "Temperate") %>%   
+  ggplot(aes(x = fct_reorder(abbr_binom(Species), Engulf_cap_m3*daily_rate), y = Engulf_cap_m3*daily_rate, 
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma,
+                limits = c(25, 15000),
+                breaks = c(100,500,1000,5000,10000)) +
+  labs(x = "Species",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~d^-1))) + 
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_filtration_fish
+
+dev.copy2pdf(file="Daily_filtration_fish.pdf", width=16, height=6)
+
+
+
+Daily_biomass_ingested_fish <- fish_daily %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae")) %>% 
+  
+  ggplot() +
+  # #best-low *our best estimate*
+  geom_flat_violin(aes(x = Species, y = daily_consumption_low_kg/1000,
+                       fill = Species), 
+                   position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = Species, y = daily_consumption_low_kg/1000,
+                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5,
+               position = position_nudge(x = 0.12, y = 0)) +
+  # best-upper
+  geom_flat_violin(aes(x = Species, y = daily_consumption_high_kg/1000,
+                       fill = Species), 
+                   position = position_nudge(x = 0.2, y = 0), alpha = 0.5, adjust = 2) +
+  geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
+                   fill = abbr_binom(Species)), width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  
+  coord_flip() +
+  scale_fill_manual(values = pal) +
+  scale_y_log10(labels = scales::comma, 
+                limits = c(0.1, 60), 
+                breaks = c(0,1,5,10,25,50)) +
+  labs(x = "Species",
+       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~d^-1))) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic"))
+Daily_biomass_ingested_fish
+
+dev.copy2pdf(file="Daily_biomass_ingested_fish.pdf", width=16, height=6)
+
+
+Fig_2_fish <- ggarrange(Daily_rate_fish, Daily_filtration_fish, Daily_biomass_ingested_fish, 
+                                #labels = c("D", "E", "F"), # THIS IS SO COOL!!
+                                font.label = list(size = 18),
+                                legend = "none",
+                                ncol = 1, nrow = 3)
+Fig_2_fish
+
+dev.copy2pdf(file="Fig_2_fish.pdf", width=12, height=18)
+
 
 
 
@@ -529,8 +929,31 @@ krill_yearly_pop <- krill_daily %>%
          filtration60hist = Engulf_cap_m3*daily_rate*60*`Historical estimate`,
          filtration90hist = Engulf_cap_m3*daily_rate*90*`Historical estimate`,
          filtration120hist = Engulf_cap_m3*daily_rate*120*`Historical estimate`,
-         filtration182.5hist = Engulf_cap_m3*daily_rate*182.5*`Historical estimate`
-    )
+         filtration182.5hist = Engulf_cap_m3*daily_rate*182.5*`Historical estimate`,
+         #prey numbers for NORTHERN HEMISPHERE ONLY, SEE BELOW FOR SOUTHERN HEMISPHERE
+         prey_low60curr = daily_consumption_low_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*60,
+         prey_low90curr = daily_consumption_low_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*90,
+         prey_low120curr = daily_consumption_low_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*120,
+         prey_low182.5curr = daily_consumption_low_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*182.5,
+         prey_low60hist = daily_consumption_low_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*60,
+         prey_low90hist = daily_consumption_low_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*90,
+         prey_low120hist = daily_consumption_low_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*120,
+         prey_low182.5hist = daily_consumption_low_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*182.5,
+  
+         prey_high60curr = daily_consumption_high_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*60,
+         prey_high90curr = daily_consumption_high_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*90,
+         prey_high120curr = daily_consumption_high_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*120,
+         prey_high182.5curr = daily_consumption_high_kg*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)*182.5,
+         prey_high60hist = daily_consumption_high_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*60,
+         prey_high90hist = daily_consumption_high_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*90,
+         prey_high120hist = daily_consumption_high_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*120,
+         prey_high182.5hist = daily_consumption_high_kg*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)*182.5)%>% 
+
+    mutate_at(vars(c("prey_low60curr":"prey_high182.5hist")), ~case_when(SpeciesCode == "bp" ~ .*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
+                                                              SpeciesCode == "bw" ~ .,
+                                                              SpeciesCode == "mn" ~ .*0.55,
+                                                              SpeciesCode == "bb" ~ .))
+  
 
 
 summ_filt_annual_pop_stats_curr <- krill_yearly_pop %>% 
@@ -578,9 +1001,154 @@ summ_filt_annual_pop_stats_hist <- krill_yearly_pop %>%
   unite("Filtration capacity (km3 ind yr), 150 days feeding, IQR", 
         c(yr_filt_182.5days_IQR25, yr_filt_182.5days_IQR75), sep = "-")
 
-# And now for the prey
+days_feeding = rep(60:183, each = 5)
+Annual_filtfeed <- krill_daily %>% 
+  group_by(Species, region) %>% 
+  summarise(
+    med_filt = median(Engulf_cap_m3*daily_rate),
+    IQR25_filt = quantile(Engulf_cap_m3*daily_rate, probs = 0.25, na.rm = TRUE),
+    IQR75_filt = quantile(Engulf_cap_m3*daily_rate, probs = 0.75, na.rm = TRUE),
+    med_ingest_low = median(daily_consumption_low_kg),
+    IQR25_ingest_low = quantile(daily_consumption_low_kg, probs = 0.25, na.rm = TRUE),
+    IQR75_ingest_low = quantile(daily_consumption_low_kg, probs = 0.75, na.rm = TRUE),
+    med_ingest_high = median(daily_consumption_high_kg),
+    IQR25_ingest_high = quantile(daily_consumption_high_kg, probs = 0.25, na.rm = TRUE),
+    IQR75_ingest_high = quantile(daily_consumption_high_kg, probs = 0.75, na.rm = TRUE)
+  ) %>% 
+  crossing(days_feeding) %>% 
+  mutate_at(c("med_filt", "IQR25_filt", "IQR75_filt"), funs(yr = .*days_feeding)) %>% 
+  mutate_at(c("med_ingest_low", "IQR25_ingest_low", "IQR75_ingest_low"), funs(yr = .*days_feeding)) %>% 
+  mutate_at(c("med_ingest_high", "IQR25_ingest_high", "IQR75_ingest_high"), funs(yr = .*days_feeding))
 
-# Southern Hemisphere current----
+# YEARLY INDIVIDUAL FILTRATION, NON-ANTARCTIC
+Annual_filtration_ind_Antarctic <- Annual_filtfeed %>% 
+  filter(region == "Polar") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_filt_yr, ymax = IQR75_filt_yr, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_yr)) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
+                breaks = c(100000,500000,1e6,5e6)) +
+  theme_minimal() +
+  theme(strip.text = element_text(face = "italic"))
+Annual_filtration_ind_Antarctic
+
+
+# YEARLY INDIVIDUAL FILTRATION, NON-ANTARCTIC
+Annual_filtration_ind_nonAntarctic <- Annual_filtfeed %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
+ ggplot() +
+  geom_ribbon(aes(ymin = IQR25_filt_yr, ymax = IQR75_filt_yr, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_yr)) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
+                breaks = c(100000,500000,1e6,5e6)) +
+  theme_minimal() +
+  theme(strip.text = element_text(face = "italic"))
+Annual_filtration_ind_nonAntarctic
+
+
+# And now for the prey
+# Northern Hemisphere calculations----
+
+
+# Annual Northern Hemisphere population krill prey, summary table
+# Northern Hemisphere current populations prey consumption (low and high)
+summ_prey_annual_curr_pop_stats <- krill_yearly_pop %>% 
+  filter(region != "Polar") %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    yr_prey_low_60days_IQR25 = round(quantile(prey_low60curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_60days_IQR75 = round(quantile(prey_low60curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR25 = round(quantile(prey_low90curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR75 = round(quantile(prey_low90curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR25 = round(quantile(prey_low120curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR75 = round(quantile(prey_low120curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR25 = round(quantile(prey_low182.5curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR75 = round(quantile(prey_low182.5curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    
+    yr_prey_high_60days_IQR25 = round(quantile(prey_high60curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_60days_IQR75 = round(quantile(prey_high60curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR25 = round(quantile(prey_high90curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR75 = round(quantile(prey_high90curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR25 = round(quantile(prey_high120curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR75 = round(quantile(prey_high120curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR25 = round(quantile(prey_high182.5curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR75 = round(quantile(prey_high182.5curr, probs = 0.75, na.rm = TRUE)/1000000000, 2)
+  ) %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 60 days feeding, IQR", 
+        c(yr_prey_low_60days_IQR25, yr_prey_low_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 60 days feeding, IQR", 
+        c(yr_prey_high_60days_IQR25, yr_prey_high_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 90 days feeding, IQR", 
+        c(yr_prey_low_90days_IQR25, yr_prey_low_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 90 days feeding, IQR", 
+        c(yr_prey_high_90days_IQR25, yr_prey_high_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 120 days feeding, IQR", 
+        c(yr_prey_low_120days_IQR25, yr_prey_low_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 120 days feeding, IQR", 
+        c(yr_prey_high_120days_IQR25, yr_prey_high_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 182.5 days feeding, IQR", 
+        c(yr_prey_low_182.5days_IQR25, yr_prey_low_182.5days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(yr_prey_high_182.5days_IQR25, yr_prey_high_182.5days_IQR75), sep = "-")
+
+
+# Northern Hemisphere historical populations prey consumption (low and high)
+summ_prey_annual_hist_pop_stats <- krill_yearly_pop %>% 
+  filter(region != "Polar") %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    yr_prey_low_60days_IQR25 = round(quantile(prey_low60hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_60days_IQR75 = round(quantile(prey_low60hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR25 = round(quantile(prey_low90hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR75 = round(quantile(prey_low90hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR25 = round(quantile(prey_low120hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR75 = round(quantile(prey_low120hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR25 = round(quantile(prey_low182.5hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR75 = round(quantile(prey_low182.5hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    
+    yr_prey_high_60days_IQR25 = round(quantile(prey_high60hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_60days_IQR75 = round(quantile(prey_high60hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR25 = round(quantile(prey_high90hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR75 = round(quantile(prey_high90hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR25 = round(quantile(prey_high120hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR75 = round(quantile(prey_high120hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR25 = round(quantile(prey_high182.5hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR75 = round(quantile(prey_high182.5hist, probs = 0.75, na.rm = TRUE)/1000000000, 2)
+  ) %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 60 days feeding, IQR", 
+        c(yr_prey_low_60days_IQR25, yr_prey_low_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 60 days feeding, IQR", 
+        c(yr_prey_high_60days_IQR25, yr_prey_high_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 90 days feeding, IQR", 
+        c(yr_prey_low_90days_IQR25, yr_prey_low_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 90 days feeding, IQR", 
+        c(yr_prey_high_90days_IQR25, yr_prey_high_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 120 days feeding, IQR", 
+        c(yr_prey_low_120days_IQR25, yr_prey_low_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 120 days feeding, IQR", 
+        c(yr_prey_high_120days_IQR25, yr_prey_high_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 182.5 days feeding, IQR", 
+        c(yr_prey_low_182.5days_IQR25, yr_prey_low_182.5days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(yr_prey_high_182.5days_IQR25, yr_prey_high_182.5days_IQR75), sep = "-")
+
+
+
+# Southern Hemisphere calculations----
 
 
 
@@ -615,12 +1183,18 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
     left_join(daylengths, by = "region") %>% 
     # MATT: change daily_rate to daily_biomass
     group_by(SpeciesCode, region) %>% 
-    mutate(biomass_best_low_m3 = rlnorm(n(), Biomass[1], `Biomass sd`[1]),
-           biomass_best_high_m3 = rlnorm(n(), BiomassTop50[1], BiomassTop50sd[1]),
-           daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
+    # mutate(biomass_best_low_m3 = rlnorm(n(), Biomass[1], `Biomass sd`[1]),
+    #        biomass_best_high_m3 = rlnorm(n(), BiomassTop50[1], BiomassTop50sd[1]),
+    mutate(daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
     ungroup() %>% 
-    mutate(daily_biomass_kg_best_low = biomass_best_low_m3*Engulf_cap_m3*daily_rate,
-           daily_biomass_kg_best_high = biomass_best_high_m3*Engulf_cap_m3*daily_rate)
+    mutate(
+      daily_mean_low_kg = pmap_dbl(list(Biomass, `Biomass sd`, daily_rate), ~mean(rlnorm(floor(..3), ..1, ..2))),
+      daily_mean_high_kg = pmap_dbl(list(BiomassTop50, BiomassTop50sd, daily_rate), ~mean(rlnorm(floor(..3), ..1, ..2))),
+      daily_consumption_low_kg = daily_mean_low_kg*Engulf_cap_m3*daily_rate, 
+      daily_consumption_high_kg = daily_mean_high_kg*Engulf_cap_m3*daily_rate) 
+  # daily_biomass_kg_best_low = biomass_best_low_m3*Engulf_cap_m3*daily_rate,
+  #      daily_biomass_kg_best_high = biomass_best_high_m3*Engulf_cap_m3*daily_rate)
+  
   
   
   
@@ -650,10 +1224,10 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
 
 aug1 <- 213
 krill_daily_Ant_projection <- estimate_daily(krill_Ant_projection, latitudes, aug1, 120)  %>% 
-  mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_biomass_kg_best_low*4575,
-                                                     region == "Temperate" ~ daily_biomass_kg_best_low*3628),
-         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_biomass_kg_best_high*4575,
-                                                      region == "Temperate" ~ daily_biomass_kg_best_high*3628),
+  mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
+                                                     region == "Temperate" ~ daily_consumption_low_kg*3628),
+         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_high_kg*4575,
+                                                      region == "Temperate" ~ daily_consumption_high_kg*3628),
          Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/Mass_est_kg,
          Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg,
   )
@@ -662,12 +1236,295 @@ krill_daily_Ant_projection <- estimate_daily(krill_Ant_projection, latitudes, au
 krill_daily_Ant_projection %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "bw") %>%
-  pull(daily_biomass_kg_best_high) %>%
+  pull(daily_consumption_low_kg) %>%
   summary()
+
+
+krill_yearly_pop_AntProj <- krill_daily_Ant_projection %>% 
+  left_join(pop_data, by = "SpeciesCode") %>% 
+  mutate(
+    prey_low60curr = daily_consumption_low_kg*`Southern hemisphere population estimate (Christensen 2006)`*60,
+    prey_low90curr = daily_consumption_low_kg*`Southern hemisphere population estimate (Christensen 2006)`*90,
+    prey_low120curr = daily_consumption_low_kg*`Southern hemisphere population estimate (Christensen 2006)`*120,
+    prey_low182.5curr = daily_consumption_low_kg*`Southern hemisphere population estimate (Christensen 2006)`*182.5,
+    prey_low60hist = daily_consumption_low_kg*`Southern hemisphere historic estimate (Christensen 2006)`*60,
+    prey_low90hist = daily_consumption_low_kg*`Southern hemisphere historic estimate (Christensen 2006)`*90,
+    prey_low120hist = daily_consumption_low_kg*`Southern hemisphere historic estimate (Christensen 2006)`*120,
+    prey_low182.5hist = daily_consumption_low_kg*`Southern hemisphere historic estimate (Christensen 2006)`*182.5,
+    prey_high60curr = daily_consumption_high_kg*`Southern hemisphere population estimate (Christensen 2006)`*60,
+    prey_high90curr = daily_consumption_high_kg*`Southern hemisphere population estimate (Christensen 2006)`*90,
+    prey_high120curr = daily_consumption_high_kg*`Southern hemisphere population estimate (Christensen 2006)`*120,
+    prey_high182.5curr = daily_consumption_high_kg*`Southern hemisphere population estimate (Christensen 2006)`*182.5,
+    prey_high60hist = daily_consumption_high_kg*`Southern hemisphere historic estimate (Christensen 2006)`*60,
+    prey_high90hist = daily_consumption_high_kg*`Southern hemisphere historic estimate (Christensen 2006)`*90,
+    prey_high120hist = daily_consumption_high_kg*`Southern hemisphere historic estimate (Christensen 2006)`*120,
+    prey_high182.5hist = daily_consumption_high_kg*`Southern hemisphere historic estimate (Christensen 2006)`*182.5
+  )
+
+
+# Annual Southern Hemisphere population krill prey, summary table
+# Southern Ocean current populations prey consumption (low and high)
+summ_prey_annual_curr_pop_stats <- krill_yearly_pop_AntProj %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    yr_prey_low_60days_IQR25 = round(quantile(prey_low60curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_60days_IQR75 = round(quantile(prey_low60curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR25 = round(quantile(prey_low90curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR75 = round(quantile(prey_low90curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR25 = round(quantile(prey_low120curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR75 = round(quantile(prey_low120curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR25 = round(quantile(prey_low182.5curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR75 = round(quantile(prey_low182.5curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    
+    yr_prey_high_60days_IQR25 = round(quantile(prey_high60curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_60days_IQR75 = round(quantile(prey_high60curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR25 = round(quantile(prey_high90curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR75 = round(quantile(prey_high90curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR25 = round(quantile(prey_high120curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR75 = round(quantile(prey_high120curr, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR25 = round(quantile(prey_high182.5curr, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR75 = round(quantile(prey_high182.5curr, probs = 0.75, na.rm = TRUE)/1000000000, 2)
+    ) %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 60 days feeding, IQR", 
+        c(yr_prey_low_60days_IQR25, yr_prey_low_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 60 days feeding, IQR", 
+        c(yr_prey_high_60days_IQR25, yr_prey_high_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 90 days feeding, IQR", 
+        c(yr_prey_low_90days_IQR25, yr_prey_low_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 90 days feeding, IQR", 
+        c(yr_prey_high_90days_IQR25, yr_prey_high_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 120 days feeding, IQR", 
+        c(yr_prey_low_120days_IQR25, yr_prey_low_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 120 days feeding, IQR", 
+        c(yr_prey_high_120days_IQR25, yr_prey_high_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 182.5 days feeding, IQR", 
+        c(yr_prey_low_182.5days_IQR25, yr_prey_low_182.5days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(yr_prey_high_182.5days_IQR25, yr_prey_high_182.5days_IQR75), sep = "-")
+
+
+
+# Southern Ocean historic populations prey consumption (low and high)
+summ_prey_annual_hist_pop_stats <- krill_yearly_pop_AntProj %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    yr_prey_low_60days_IQR25 = round(quantile(prey_low60hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_60days_IQR75 = round(quantile(prey_low60hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR25 = round(quantile(prey_low90hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_90days_IQR75 = round(quantile(prey_low90hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR25 = round(quantile(prey_low120hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_120days_IQR75 = round(quantile(prey_low120hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR25 = round(quantile(prey_low182.5hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_low_182.5days_IQR75 = round(quantile(prey_low182.5hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    
+    yr_prey_high_60days_IQR25 = round(quantile(prey_high60hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_60days_IQR75 = round(quantile(prey_high60hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR25 = round(quantile(prey_high90hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_90days_IQR75 = round(quantile(prey_high90hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR25 = round(quantile(prey_high120hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_120days_IQR75 = round(quantile(prey_high120hist, probs = 0.75, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR25 = round(quantile(prey_high182.5hist, probs = 0.25, na.rm = TRUE)/1000000000, 2),
+    yr_prey_high_182.5days_IQR75 = round(quantile(prey_high182.5hist, probs = 0.75, na.rm = TRUE)/1000000000, 2)
+  ) %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 60 days feeding, IQR", 
+        c(yr_prey_low_60days_IQR25, yr_prey_low_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 60 days feeding, IQR", 
+        c(yr_prey_high_60days_IQR25, yr_prey_high_60days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 90 days feeding, IQR", 
+        c(yr_prey_low_90days_IQR25, yr_prey_low_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 90 days feeding, IQR", 
+        c(yr_prey_high_90days_IQR25, yr_prey_high_90days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 120 days feeding, IQR", 
+        c(yr_prey_low_120days_IQR25, yr_prey_low_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 120 days feeding, IQR", 
+        c(yr_prey_high_120days_IQR25, yr_prey_high_120days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'random', 182.5 days feeding, IQR", 
+        c(yr_prey_low_182.5days_IQR25, yr_prey_low_182.5days_IQR75), sep = "-") %>% 
+  unite("Krill consumption (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(yr_prey_high_182.5days_IQR25, yr_prey_high_182.5days_IQR75), sep = "-")
+
+
+#summary tables of population nutrients recycled per year (Figure 5) ----
+
+# Just doing Southern Ocean iron for now...
+
+Fe_calc_kg <- function(x) {
+  x*0.8*0.000146
+} # From Doughty et al. 2016, Roman and McCarthy 2010
+N_calc_kg <- function(x) {
+  x*0.8*0.0056
+} # see Roman et al. 2016, converted moles PON to g to kg
+P_calc_kg <- function(x) {
+  x*0.8*0.0089
+} # whale fecal average from Ratnarajah et al. 2014
+
+C_exported_from_Fe <- function(x) {
+  
+}
+
+krill_yearly_pop_AntProj_Nutrients <- krill_yearly_pop_AntProj %>% 
+  mutate_at(vars(c("prey_low60curr":"prey_high182.5hist")), .funs = list(Fe = ~Fe_calc_kg(.))) %>%
+  mutate_at(vars(c("prey_low60curr_Fe":"prey_high182.5hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e9)*5e4)) %>% # Carbon production stimulated by Fe defecation in Mt C
+  mutate_at(vars(c("prey_low60curr":"prey_high182.5hist")), .funs = list(C_respired_Mt = ~(.*(0.45*0.75))/1e9)) %>%   # Carbon respired by populations in Mt C
+  mutate_at(vars(c("prey_low60curr_Fe_C_produced_Mt":"prey_high182.5hist_Fe_C_produced_Mt")), 
+            .funs = list(C_exported_Mt = ~.*0.92))   # not exactly right, but very close
   
 
+summ_prey_annual_curr_pop_Fe <- krill_yearly_pop_AntProj_Nutrients %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    Fe_produced_low_60days_IQR25 = round(quantile(prey_low60curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_60days_IQR75 = round(quantile(prey_low60curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_90days_IQR25 = round(quantile(prey_low90curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_90days_IQR75 = round(quantile(prey_low90curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_120days_IQR25 = round(quantile(prey_low120curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_120days_IQR75 = round(quantile(prey_low120curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_182.5days_IQR25 = round(quantile(prey_low182.5curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_low_182.5days_IQR75 = round(quantile(prey_low182.5curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    
+    Fe_produced_high_60days_IQR25 = round(quantile(prey_high60curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_60days_IQR75 = round(quantile(prey_high60curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_90days_IQR25 = round(quantile(prey_high90curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_90days_IQR75 = round(quantile(prey_high90curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_120days_IQR25 = round(quantile(prey_high120curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_120days_IQR75 = round(quantile(prey_high120curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_182.5days_IQR25 = round(quantile(prey_high182.5curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
+    Fe_produced_high_182.5days_IQR75 = round(quantile(prey_high182.5curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2)
+  ) %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 60 days feeding, IQR", 
+        c(Fe_produced_low_60days_IQR25, Fe_produced_low_60days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 60 days feeding, IQR", 
+        c(Fe_produced_high_60days_IQR25, Fe_produced_high_60days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 90 days feeding, IQR", 
+        c(Fe_produced_low_90days_IQR25, Fe_produced_low_90days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 90 days feeding, IQR", 
+        c(Fe_produced_high_90days_IQR25, Fe_produced_high_90days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 120 days feeding, IQR", 
+        c(Fe_produced_low_120days_IQR25, Fe_produced_low_120days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 120 days feeding, IQR", 
+        c(Fe_produced_high_120days_IQR25, Fe_produced_high_120days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 182.5 days feeding, IQR", 
+        c(Fe_produced_low_182.5days_IQR25, Fe_produced_low_182.5days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(Fe_produced_high_182.5days_IQR25, Fe_produced_high_182.5days_IQR75), sep = "-")
+ 
+
+summ_prey_annual_hist_pop_Fe <- krill_yearly_pop_AntProj_Nutrients %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    Fe_produced_low_60days_IQR25 = round(quantile(prey_low60hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_60days_IQR75 = round(quantile(prey_low60hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_90days_IQR25 = round(quantile(prey_low90hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_90days_IQR75 = round(quantile(prey_low90hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_120days_IQR25 = round(quantile(prey_low120hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_120days_IQR75 = round(quantile(prey_low120hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_182.5days_IQR25 = round(quantile(prey_low182.5hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_low_182.5days_IQR75 = round(quantile(prey_low182.5hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    
+    Fe_produced_high_60days_IQR25 = round(quantile(prey_high60hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_60days_IQR75 = round(quantile(prey_high60hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_90days_IQR25 = round(quantile(prey_high90hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_90days_IQR75 = round(quantile(prey_high90hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_120days_IQR25 = round(quantile(prey_high120hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_120days_IQR75 = round(quantile(prey_high120hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_182.5days_IQR25 = round(quantile(prey_high182.5hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
+    Fe_produced_high_182.5days_IQR75 = round(quantile(prey_high182.5hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0)
+  ) %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 60 days feeding, IQR", 
+        c(Fe_produced_low_60days_IQR25, Fe_produced_low_60days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 60 days feeding, IQR", 
+        c(Fe_produced_high_60days_IQR25, Fe_produced_high_60days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 90 days feeding, IQR", 
+        c(Fe_produced_low_90days_IQR25, Fe_produced_low_90days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 90 days feeding, IQR", 
+        c(Fe_produced_high_90days_IQR25, Fe_produced_high_90days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 120 days feeding, IQR", 
+        c(Fe_produced_low_120days_IQR25, Fe_produced_low_120days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 120 days feeding, IQR", 
+        c(Fe_produced_high_120days_IQR25, Fe_produced_high_120days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'random', 182.5 days feeding, IQR", 
+        c(Fe_produced_low_182.5days_IQR25, Fe_produced_low_182.5days_IQR75), sep = "-") %>% 
+  unite("Fe recycled (tonnes ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(Fe_produced_high_182.5days_IQR25, Fe_produced_high_182.5days_IQR75), sep = "-")
 
 
 
+summ_prey_annual_curr_pop_Cexport <- krill_yearly_pop_AntProj_Nutrients %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    C_export_low_60days_IQR25 = round(quantile(prey_low60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_low_60days_IQR75 = round(quantile(prey_low60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    C_export_low_90days_IQR25 = round(quantile(prey_low90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_low_90days_IQR75 = round(quantile(prey_low90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    C_export_low_120days_IQR25 = round(quantile(prey_low120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_low_120days_IQR75 = round(quantile(prey_low120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    C_export_low_182.5days_IQR25 = round(quantile(prey_low182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_low_182.5days_IQR75 = round(quantile(prey_low182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    
+    C_export_high_60days_IQR25 = round(quantile(prey_high60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_high_60days_IQR75 = round(quantile(prey_high60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    C_export_high_90days_IQR25 = round(quantile(prey_high90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_high_90days_IQR75 = round(quantile(prey_high90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    C_export_high_120days_IQR25 = round(quantile(prey_high120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_high_120days_IQR75 = round(quantile(prey_high120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
+    C_export_high_182.5days_IQR25 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
+    C_export_high_182.5days_IQR75 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2)
+  ) %>% 
+  unite("C exported (Mt ind yr), 'random', 60 days feeding, IQR", 
+        c(C_export_low_60days_IQR25, C_export_low_60days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 60 days feeding, IQR", 
+        c(C_export_high_60days_IQR25, C_export_high_60days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'random', 90 days feeding, IQR", 
+        c(C_export_low_90days_IQR25, C_export_low_90days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 90 days feeding, IQR", 
+        c(C_export_high_90days_IQR25, C_export_high_90days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'random', 120 days feeding, IQR", 
+        c(C_export_low_120days_IQR25, C_export_low_120days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 120 days feeding, IQR", 
+        c(C_export_high_120days_IQR25, C_export_high_120days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'random', 182.5 days feeding, IQR", 
+        c(C_export_low_182.5days_IQR25, C_export_low_182.5days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(C_export_high_182.5days_IQR25, C_export_high_182.5days_IQR75), sep = "-")
 
 
+summ_prey_annual_hist_pop_Cexport <- krill_yearly_pop_AntProj_Nutrients %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    C_export_low_60days_IQR25 = round(quantile(prey_low60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_low_60days_IQR75 = round(quantile(prey_low60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    C_export_low_90days_IQR25 = round(quantile(prey_low90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_low_90days_IQR75 = round(quantile(prey_low90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    C_export_low_120days_IQR25 = round(quantile(prey_low120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_low_120days_IQR75 = round(quantile(prey_low120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    C_export_low_182.5days_IQR25 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_low_182.5days_IQR75 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    
+    C_export_high_60days_IQR25 = round(quantile(prey_high60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_high_60days_IQR75 = round(quantile(prey_high60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    C_export_high_90days_IQR25 = round(quantile(prey_high90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_high_90days_IQR75 = round(quantile(prey_high90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    C_export_high_120days_IQR25 = round(quantile(prey_high120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_high_120days_IQR75 = round(quantile(prey_high120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
+    C_export_high_182.5days_IQR25 = round(quantile(prey_high182.5hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
+    C_export_high_182.5days_IQR75 = round(quantile(prey_high182.5hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0)
+  ) %>% 
+  unite("C exported (Mt ind yr), 'random', 60 days feeding, IQR", 
+        c(C_export_low_60days_IQR25, C_export_low_60days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 60 days feeding, IQR", 
+        c(C_export_high_60days_IQR25, C_export_high_60days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'random', 90 days feeding, IQR", 
+        c(C_export_low_90days_IQR25, C_export_low_90days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 90 days feeding, IQR", 
+        c(C_export_high_90days_IQR25, C_export_high_90days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'random', 120 days feeding, IQR", 
+        c(C_export_low_120days_IQR25, C_export_low_120days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 120 days feeding, IQR", 
+        c(C_export_high_120days_IQR25, C_export_high_120days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'random', 182.5 days feeding, IQR", 
+        c(C_export_low_182.5days_IQR25, C_export_low_182.5days_IQR75), sep = "-") %>% 
+  unite("C exported (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
+        c(C_export_high_182.5days_IQR25, C_export_high_182.5days_IQR75), sep = "-")
+
+
+# Total range of C export 362 - 3775 Mt C yr-1 

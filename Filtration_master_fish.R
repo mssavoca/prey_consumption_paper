@@ -229,7 +229,7 @@ pop_data <- read_excel("Filtration project_Whale population and feeding informat
 
 
 #Read in tag guide----
-tag_guide <- read_excel("TAG GUIDE_9.5.19.xlsx", skip = 2) %>%  # Skips first two rows
+tag_guide <- read_excel("TAG GUIDE_2.11.20.xlsx", skip = 2) %>%  # Skips first two rows
   rename(Study_Area = `Study_Area     _`,
          SpeciesCode = `Spec      _`,
          whaleLength = `Drone  _`) 
