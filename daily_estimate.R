@@ -1001,6 +1001,7 @@ summ_filt_annual_pop_stats_hist <- krill_yearly_pop %>%
   unite("Filtration capacity (km3 ind yr), 150 days feeding, IQR", 
         c(yr_filt_182.5days_IQR25, yr_filt_182.5days_IQR75), sep = "-")
 
+# Figure 3----
 days_feeding = rep(60:183, each = 5)
 Annual_filtfeed <- krill_daily %>% 
   group_by(Species, region) %>% 
@@ -1020,7 +1021,8 @@ Annual_filtfeed <- krill_daily %>%
   mutate_at(c("med_ingest_low", "IQR25_ingest_low", "IQR75_ingest_low"), funs(yr = .*days_feeding)) %>% 
   mutate_at(c("med_ingest_high", "IQR25_ingest_high", "IQR75_ingest_high"), funs(yr = .*days_feeding))
 
-# YEARLY INDIVIDUAL FILTRATION, NON-ANTARCTIC
+
+# YEARLY INDIVIDUAL FILTRATION, ANTARCTIC
 Annual_filtration_ind_Antarctic <- Annual_filtfeed %>% 
   filter(region == "Polar") %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
@@ -1028,39 +1030,100 @@ Annual_filtration_ind_Antarctic <- Annual_filtfeed %>%
   geom_ribbon(aes(ymin = IQR25_filt_yr, ymax = IQR75_filt_yr, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_filt_yr)) +
+  geom_line(aes(days_feeding, med_filt_yr, color = Species), 
+            size = 1.5) +
+  scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
        y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
                 breaks = c(100000,500000,1e6,5e6)) +
-  theme_minimal() +
-  theme(strip.text = element_text(face = "italic"))
+  theme_minimal(base_size = 24) +
+    theme(strip.text = element_text(face = "italic"),
+          legend.position = "none")
 Annual_filtration_ind_Antarctic
+
+dev.copy2pdf(file="Annual_filtration_ind_Antarctic.pdf", width=14, height=10)
+
 
 
 # YEARLY INDIVIDUAL FILTRATION, NON-ANTARCTIC
 Annual_filtration_ind_nonAntarctic <- Annual_filtfeed %>% 
   filter(region == "Temperate") %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
- ggplot() +
+  ggplot() +
   geom_ribbon(aes(ymin = IQR25_filt_yr, ymax = IQR75_filt_yr, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_filt_yr)) +
+  geom_line(aes(days_feeding, med_filt_yr, color = Species), 
+            size = 1.5) +
+  scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
        y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
                 breaks = c(100000,500000,1e6,5e6)) +
-  theme_minimal() +
-  theme(strip.text = element_text(face = "italic"))
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
 Annual_filtration_ind_nonAntarctic
 
+dev.copy2pdf(file="Annual_filtration_ind_nonAntarctic.pdf", width=16, height=10)
 
 # And now for the prey
+# YEARLY INDIVIDUAL FILTRATION, ANTARCTIC
+Annual_ingestion_ind_Antarctic <- Annual_filtfeed %>% 
+  filter(region == "Polar") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_yr, ymax = IQR75_ingest_low_yr, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_yr, color = Species), 
+            size = 1.5) +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(2e4, 6e5),
+                breaks = c(20000,50000,1e5,2e5,6e5)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_ind_Antarctic
+
+dev.copy2pdf(file="Annual_ingestion_ind_Antarctic.pdf", width=14, height=10)
+
+
+
+# YEARLY INDIVIDUAL FILTRATION, NON-ANTARCTIC
+Annual_filtration_ind_nonAntarctic <- Annual_filtfeed %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_filt_yr, ymax = IQR75_filt_yr, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_yr, color = Species), 
+            size = 1.5) +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
+                breaks = c(100000,500000,1e6,5e6)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_filtration_ind_nonAntarctic
+
+dev.copy2pdf(file="Annual_filtration_ind_nonAntarctic.pdf", width=16, height=10)
+
+
 # Northern Hemisphere calculations----
 
 
