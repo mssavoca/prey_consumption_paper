@@ -1025,33 +1025,34 @@ Annual_filtfeed <- krill_daily %>%
   mutate(
     
     #Current population
-    med_filt_curr = med_filt_yr*`Population estimate (IUCN 2019)`,
-    IQR25_filt_curr = IQR25_filt_yr*`Population estimate (IUCN 2019)`,
-    IQR75_filt_curr = IQR75_filt_yr*`Population estimate (IUCN 2019)`,
-    med_ingest_low_t_curr = med_ingest_low_t_yr*`Population estimate (IUCN 2019)`,
-    IQR25_ingest_low_t_curr = IQR25_ingest_low_t_yr*`Population estimate (IUCN 2019)`,
-    IQR75_ingest_low_t_curr = IQR75_ingest_low_t_yr*`Population estimate (IUCN 2019)`,
-    med_ingest_high_t_curr = med_ingest_high_t_yr*`Population estimate (IUCN 2019)`,
-    IQR25_ingest_high_t_curr = IQR25_ingest_high_t_yr*`Population estimate (IUCN 2019)`,
-    IQR75_ingest_high_t_curr = IQR75_ingest_high_t_yr*`Population estimate (IUCN 2019)`,
+    med_filt_curr = med_filt_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    IQR25_filt_curr = IQR25_filt_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    IQR75_filt_curr = IQR75_filt_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    med_ingest_low_t_curr = med_ingest_low_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    IQR25_ingest_low_t_curr = IQR25_ingest_low_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    IQR75_ingest_low_t_curr = IQR75_ingest_low_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    med_ingest_high_t_curr = med_ingest_high_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    IQR25_ingest_high_t_curr = IQR25_ingest_high_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
+    IQR75_ingest_high_t_curr = IQR75_ingest_high_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
     
-    #Historic population, NORTHERN HEMISPHERE ONLY
-    med_filt_hist = med_filt_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    IQR25_filt_hist = IQR25_filt_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    IQR75_filt_hist = IQR75_filt_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    med_ingest_low_t_hist = med_ingest_low_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    IQR25_ingest_low_t_hist = IQR25_ingest_low_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    IQR75_ingest_low_t_hist = IQR75_ingest_low_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    med_ingest_high_t_hist = med_ingest_high_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    IQR25_ingest_high_t_hist = IQR25_ingest_high_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`),
-    IQR75_ingest_high_t_hist = IQR75_ingest_high_t_yr*(`Population estimate (Christensen 2006)`-`Southern hemisphere population estimate (Christensen 2006)`)
+    #Historic population, NORTHERN HEMISPHERE ONLY, NEED TO FIX!!!
+    med_filt_hist = med_filt_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    IQR25_filt_hist = IQR25_filt_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    IQR75_filt_hist = IQR75_filt_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    med_ingest_low_t_hist = med_ingest_low_t_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    IQR25_ingest_low_t_hist = IQR25_ingest_low_t_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    IQR75_ingest_low_t_hist = IQR75_ingest_low_t_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    med_ingest_high_t_hist = med_ingest_high_t_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    IQR25_ingest_high_t_hist = IQR25_ingest_high_t_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`),
+    IQR75_ingest_high_t_hist = IQR75_ingest_high_t_yr*(`Historical estimate`-`Southern hemisphere historic estimate (Christensen 2006)`)
+  
   ) %>% 
 
   mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
                    "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), ~case_when(SpeciesCode == "bp" ~ .*0.8,     # correcting for proportion of diet that is fish; and proportion of individuals not in Southern Hemisphere
-                                                                       SpeciesCode == "bw" ~ .,
-                                                                       SpeciesCode == "mn" | region == "Temperate" ~ .*0.55,  # FILTER not working like I need
-                                                                       SpeciesCode == "bb" ~ .))
+                                                                                    SpeciesCode == "bw" ~ .,
+                                                                                    SpeciesCode == "mn" | region == "Temperate" ~ .*0.55, # FILTER not working like I need
+                                                                                    SpeciesCode == "bb" ~ .))
 
 
 
@@ -1170,11 +1171,94 @@ Annual_ingestion_ind_nonAntarctic
 dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic.pdf", width=16, height=10)
 
 # Figure 4----
+# YEARLY POPULATION FILTRATION, NON-ANTARCTIC
+Annual_filtration_Pop_nonAntarctic <- Annual_filtfeed %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_filt_curr/1e9, ymax = IQR75_filt_curr/1e9, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_curr/1e9, color = Species), 
+            size = 1.5) +
+  geom_ribbon(aes(ymin = IQR25_filt_hist/1e9, ymax = IQR75_filt_hist/1e9, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_hist/1e9, color = Species), 
+            size = 1.5) +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated water filtered'~(km^3~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(limits = c(1, 400),
+                breaks = c(5,10,25,100,250)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_filtration_Pop_nonAntarctic
+
+dev.copy2pdf(file="Annual_filtration_Pop_nonAntarctic.pdf", width=14, height=10)
 
 
+# Northern Hemisphere prey, current
+Annual_ingestion_PopCurr_nonAntarctic <- Annual_filtfeed %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(limits = c(1.5, 175),
+                breaks = c(5, 10, 25, 50, 100)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopCurr_nonAntarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopCurr_nonAntarctic.pdf", width=14, height=10)
 
 
-# Northern Hemisphere calculations
+# Northern Hemisphere prey, historic
+Annual_ingestion_PopHist_nonAntarctic <- Annual_filtfeed %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(limits = c(1.5, 175),
+                breaks = c(5, 10, 25, 50, 100)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopHist_nonAntarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopHist_nonAntarctic.pdf", width=14, height=10)
 
 
 # Annual Northern Hemisphere population krill prey, summary table
@@ -1261,7 +1345,7 @@ summ_prey_annual_hist_pop_stats <- krill_yearly_pop %>%
 
 
 
-# Southern Hemisphere calculations----
+# Southern Hemisphere calculations (Figure 4)----
 
 
 
@@ -1342,13 +1426,22 @@ krill_daily_Ant_projection <- estimate_daily(krill_Ant_projection, latitudes, au
          Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_high_kg*4575,
                                                       region == "Temperate" ~ daily_consumption_high_kg*3628),
          Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/Mass_est_kg,
-         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg,
+         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/Mass_est_kg
   )
 
 
-krill_daily_Ant_projection %>%  
-  group_by(SpeciesCode) %>% 
-  filter(SpeciesCode == "bw") %>%
+krill_daily_Ant_projection <- krill_daily_Ant_projection %>%  
+  mutate(Species = case_when(
+    SpeciesCode == "bw" ~ "Balaenoptera musculus",
+    SpeciesCode == "bp" ~ "Balaenoptera physalus",
+    SpeciesCode == "mn" ~ "Megaptera novaeangliae",
+    SpeciesCode == "bb" ~ "Balaenoptera bonaerensis", 
+    SpeciesCode == "be" ~ "Balaenoptera edeni",
+    SpeciesCode == "bs" ~ "Balaenoptera borealis")) 
+
+krill_daily_Ant_projection %>% 
+  group_by(Species) %>% 
+  filter(Species == "Balaenoptera musculus") %>%
   pull(daily_consumption_low_kg) %>%
   summary()
 
@@ -1457,6 +1550,145 @@ summ_prey_annual_hist_pop_stats <- krill_yearly_pop_AntProj %>%
         c(yr_prey_high_182.5days_IQR25, yr_prey_high_182.5days_IQR75), sep = "-")
 
 
+
+
+
+days_feeding = rep(60:183, each = 5)
+Annual_filtfeed_Ant_projection <- krill_daily_Ant_projection %>% 
+  group_by(Species, region) %>% 
+  summarise(
+    #Individual
+    med_filt = median(Engulf_cap_m3*daily_rate),
+    IQR25_filt = quantile(Engulf_cap_m3*daily_rate, probs = 0.25, na.rm = TRUE),
+    IQR75_filt = quantile(Engulf_cap_m3*daily_rate, probs = 0.75, na.rm = TRUE),
+    med_ingest_low_t = median(daily_consumption_low_kg, na.rm = TRUE)/1000,
+    IQR25_ingest_low_t = quantile(daily_consumption_low_kg, probs = 0.25, na.rm = TRUE)/1000,
+    IQR75_ingest_low_t = quantile(daily_consumption_low_kg, probs = 0.75, na.rm = TRUE)/1000,
+    med_ingest_high_t = median(daily_consumption_high_kg, na.rm = TRUE)/1000,
+    IQR25_ingest_high_t = quantile(daily_consumption_high_kg, probs = 0.25, na.rm = TRUE)/1000,
+    IQR75_ingest_high_t = quantile(daily_consumption_high_kg, probs = 0.75, na.rm = TRUE)/1000
+  ) %>%
+  crossing(days_feeding) %>% 
+  mutate_at(c("med_filt", "IQR25_filt", "IQR75_filt"), funs(yr = .*days_feeding)) %>% 
+  mutate_at(c("med_ingest_low_t", "IQR25_ingest_low_t", "IQR75_ingest_low_t"), funs(yr = .*days_feeding)) %>% 
+  mutate_at(c("med_ingest_high_t", "IQR25_ingest_high_t", "IQR75_ingest_high_t"), funs(yr = .*days_feeding)) %>% 
+  left_join(pop_data, by = "Species") %>% 
+  mutate(
+    
+    #Current population
+    med_filt_curr = med_filt_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    IQR25_filt_curr = IQR25_filt_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    IQR75_filt_curr = IQR75_filt_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    med_ingest_low_t_curr = med_ingest_low_t_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    IQR25_ingest_low_t_curr = IQR25_ingest_low_t_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    IQR75_ingest_low_t_curr = IQR75_ingest_low_t_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    med_ingest_high_t_curr = med_ingest_high_t_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    IQR25_ingest_high_t_curr = IQR25_ingest_high_t_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    IQR75_ingest_high_t_curr = IQR75_ingest_high_t_yr*`Southern hemisphere population estimate (Christensen 2006)`,
+    
+    #Historic population
+    med_filt_hist = med_filt_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    IQR25_filt_hist = IQR25_filt_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    IQR75_filt_hist = IQR75_filt_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    med_ingest_low_t_hist = med_ingest_low_t_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    IQR25_ingest_low_t_hist = IQR25_ingest_low_t_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    IQR75_ingest_low_t_hist = IQR75_ingest_low_t_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    med_ingest_high_t_hist = med_ingest_high_t_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    IQR25_ingest_high_t_hist = IQR25_ingest_high_t_yr*`Southern hemisphere historic estimate (Christensen 2006)`,
+    IQR75_ingest_high_t_hist = IQR75_ingest_high_t_yr*`Southern hemisphere historic estimate (Christensen 2006)`
+    
+  )
+
+
+
+# YEARLY POPULATION FILTRATION, ANTARCTIC
+Annual_filtration_Pop_Antarctic <- Annual_filtfeed_Ant_projection %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_filt_curr/1e9, ymax = IQR75_filt_curr/1e9, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_curr/1e9, color = Species), 
+            size = 1.5) +
+  geom_ribbon(aes(ymin = IQR25_filt_hist/1e9, ymax = IQR75_filt_hist/1e9, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_filt_hist/1e9, color = Species), 
+            size = 1.5) +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated water filtered'~(km^3~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(1, 2500),
+                breaks = c(1,5,10,25,100,250,1000,2500)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_filtration_Pop_Antarctic
+
+dev.copy2pdf(file="Annual_filtration_Pop_Antarctic.pdf", width=14, height=10)
+
+
+# Southern Hemisphere prey, current
+Annual_ingestion_PopCurr_Antarctic <- Annual_filtfeed_Ant_projection %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
+                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopCurr_Antarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic.pdf", width=14, height=10)
+
+
+
+# Southern Hemisphere prey, historic
+Annual_ingestion_PopHist_Antarctic <- Annual_filtfeed_Ant_projection %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
+                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopHist_Antarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic.pdf", width=14, height=10)
+
+
 #summary tables of population nutrients recycled per year (Figure 5) ----
 
 # Just doing Southern Ocean iron for now...
@@ -1471,17 +1703,20 @@ P_calc_kg <- function(x) {
   x*0.8*0.0089
 } # whale fecal average from Ratnarajah et al. 2014
 
-C_exported_from_Fe <- function(x) {
-  
-}
 
-krill_yearly_pop_AntProj_Nutrients <- krill_yearly_pop_AntProj %>% 
-  mutate_at(vars(c("prey_low60curr":"prey_high182.5hist")), .funs = list(Fe = ~Fe_calc_kg(.))) %>%
-  mutate_at(vars(c("prey_low60curr_Fe":"prey_high182.5hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e9)*5e4)) %>% # Carbon production stimulated by Fe defecation in Mt C
-  mutate_at(vars(c("prey_low60curr":"prey_high182.5hist")), .funs = list(C_respired_Mt = ~(.*(0.45*0.75))/1e9)) %>%   # Carbon respired by populations in Mt C
-  mutate_at(vars(c("prey_low60curr_Fe_C_produced_Mt":"prey_high182.5hist_Fe_C_produced_Mt")), 
-            .funs = list(C_exported_Mt = ~.*0.92))   # not exactly right, but very close
+
+Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>% 
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(Fe = ~Fe_calc_kg(.))) %>%
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
+                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e9)*5e4)) %>% # Carbon production stimulated by Fe defecation in Mt C
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(C_respired_Mt = ~(.*(0.45*0.75))/1e9)) %>%   # Carbon respired by populations in Mt C
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
+                   "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
+            .funs = list(C_exported_Mt = ~.*0.92))   #Excess productivity (C produced - C respired),  not exactly right, but very close. But how much is actually exported? 30%? CHECK REFS!!!
   
+
 
 summ_prey_annual_curr_pop_Fe <- krill_yearly_pop_AntProj_Nutrients %>% 
   group_by(SpeciesCode, region) %>% 
@@ -1641,3 +1876,68 @@ summ_prey_annual_hist_pop_Cexport <- krill_yearly_pop_AntProj_Nutrients %>%
 
 
 # Total range of C export 362 - 3775 Mt C yr-1 
+
+
+
+# Southern Hemisphere Fe, current
+Annual_ingestion_PopCurr_Antarctic <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
+                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopCurr_Antarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic.pdf", width=14, height=10)
+
+
+
+# Southern Hemisphere prey, historic
+Annual_ingestion_PopHist_Antarctic <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
+                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopHist_Antarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic.pdf", width=14, height=10)
+
+
+
+
+
