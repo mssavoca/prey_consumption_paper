@@ -124,6 +124,135 @@ Brydes_lunges_for_join <- Brydes_lunges_long %>%
 # Dave's KRILL data (from 11/21/19)----
 #natural log transformed, which is what we were donig in the prior iteration
 
+pooled_log_mean <- function(m1, m2) {
+  a = (log(m1) + log(m2))/2
+  exp(a)  #turns values back into biomass units (kg/m3)
+}
+
+
+# pooled sd
+pooled_sd_mean <- function(sd1, sd2, n1, n2) {
+  
+  a=log(sd1)
+  b=log(sd2)
+  
+  pooled_sd = sqrt(((n1-1)*a^2 + (n2-1)*b^2)/(n1+n2-2))  # https://www.statisticshowto.datasciencecentral.com/pooled-standard-deviation/ 
+  
+  exp(pooled_sd)   #turns values back into biomass units (kg/m3)
+}
+
+
+# read in, clean, combine data
+MRY_krill_data <- read_csv("MontereyKrillData (1).csv") %>% 
+  filter(!Species %in% c("bigBW", "bb")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  mutate(
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Study_Area = "Monterey",
+    Region = "Eastern North Pacific") %>% 
+  rename(SpeciesCode = "Species") 
+
+SoCal_krill_data <- read_csv("SoCalKrillData (1).csv") %>% 
+  filter(!Species %in% c("bigBW", "bb")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  mutate(
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Study_Area = "SoCal",
+    Region = "Eastern North Pacific") %>% 
+  rename(SpeciesCode = "Species") 
+
+# combining Monterey and SoCal prey data
+ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
+  #mutate(Study_Area2 = Study_Area) %>% 
+  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
+  #rename(Study_Area = Study_Area2) %>% 
+  mutate(
+    `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+    Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
+    `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    Study_Area = NA
+    # 
+    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
+    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
+    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
+    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+  ) %>% 
+  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) %>% 
+  mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(10^.x))
+
+
+WAP_krill_data <- read_csv("AntarcticKrillData (1).csv") %>% 
+  filter(!Species %in% c("bigBW")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  mutate(
+    Biomass_hyp_low = NA,
+    Study_Area = "Antarctic",
+    Region = "Antarctic") %>% 
+  rename(SpeciesCode = "Species")
+
+SA_krill_data <- read_csv("SouthAfricaKrillData (1).csv") %>% 
+  filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
+  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+  mutate(
+    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+    Study_Area = "South Africa",
+    Region = "South Africa") %>% 
+  rename(SpeciesCode = "Species") 
+
+
+# combining ENP and SA prey data
+ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
+  #mutate(Study_Area2 = Study_Area) %>% 
+  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
+  #rename(Study_Area = Study_Area2) %>% 
+  mutate(
+    `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+    Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
+    `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+    Study_Area = NA
+    # 
+    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
+    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
+    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
+    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
+    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+  ) %>% 
+  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
+
+
+All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data) 
+
+All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data, SA_krill_data)
+
+# Whale population data---- 
+#Current data from IUCN 2019 Redlist, whaling data compiled in Rocha et al. 2014
+pop_data <- read_excel("Filtration project_Whale population and feeding information.xlsx", sheet = 1) %>%
+  mutate(SpeciesCode = case_when(Species == "Balaenoptera musculus" ~ "bw",
+                                 Species == "Balaenoptera physalus" ~ "bp",
+                                 Species == "Megaptera novaeangliae" ~ "mn",
+                                 Species == "Balaenoptera borealis" ~ "bs",
+                                 Species == "Balaenoptera edeni" ~ "be",
+                                 Species == "Balaenoptera acutorostrata" ~ "ba",
+                                 Species == "Balaenoptera bonaerensis" ~ "bb",
+                                 Species == "Eubalaena glacialis" ~ "eg",
+                                 Species == "Eubalaena japonica" ~ "ej",
+                                 Species == "Eubalaena australis" ~ "ea",
+                                 Species == "Balaena mysticetus" ~ "bm"
+  ))
+
+
+
+
+
 # data projected for Antarctic blue and fin whales
 Krill_data_Ant_projection <- read_excel("AntarcticKrillData (1).xlsx", sheet = 3) %>% 
   filter(Species %in% c("bp","bw")) %>% 
@@ -1073,7 +1202,7 @@ Annual_filtration_ind_Antarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
+       y = bquote('Projected water filtered'~(m^3~ind^-1~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
                 breaks = c(100000,500000,1e6,5e6)) +
@@ -1082,7 +1211,7 @@ Annual_filtration_ind_Antarctic <- Annual_filtfeed %>%
           legend.position = "none")
 Annual_filtration_ind_Antarctic
 
-dev.copy2pdf(file="Annual_filtration_ind_Antarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_filtration_ind_Antarctic.pdf", width=14, height=8)
 
 
 
@@ -1099,16 +1228,16 @@ Annual_filtration_ind_nonAntarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated water filtered'~(m^3~ind^-1~yr^-1))) + 
+       y = bquote('Projected water filtered'~(m^3~ind^-1~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(8e4, 8e6),
                 breaks = c(100000,500000,1e6,5e6)) +
-  theme_minimal(base_size = 24) +
+  theme_minimal(base_size = 24) + 
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_filtration_ind_nonAntarctic
 
-dev.copy2pdf(file="Annual_filtration_ind_nonAntarctic.pdf", width=16, height=10)
+dev.copy2pdf(file="Annual_filtration_ind_nonAntarctic.pdf", width=14, height=8)
 
 # And now for the prey
 # YEARLY INDIVIDUAL PREY, ANTARCTIC
@@ -1129,15 +1258,16 @@ Annual_ingestion_ind_Antarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(tonnes~ind^-1~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(breaks = c(30,100,300,600)) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 4000),
+                breaks = c(30,100,300,600,1500,3000)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_ingestion_ind_Antarctic
 
-dev.copy2pdf(file="Annual_ingestion_ind_Antarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_ingestion_ind_Antarctic.pdf", width=14, height=8)
 
 
 
@@ -1159,22 +1289,23 @@ Annual_ingestion_ind_nonAntarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(tonnes~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(tonnes~ind^-1~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(100, 4000),
-                breaks = c(100,300,600,1500,3000)) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 4000),
+                breaks = c(30,100,300,600,1500,3000)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_ingestion_ind_nonAntarctic
 
-dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic.pdf", width=16, height=10)
+dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic.pdf", width=14, height=8)
+
 
 # Figure 4----
 # YEARLY POPULATION FILTRATION, NON-ANTARCTIC
 Annual_filtration_Pop_nonAntarctic <- Annual_filtfeed %>% 
   filter(region == "Temperate") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
   ggplot() +
   geom_ribbon(aes(ymin = IQR25_filt_curr/1e9, ymax = IQR75_filt_curr/1e9, 
                   x=days_feeding), 
@@ -1189,16 +1320,23 @@ Annual_filtration_Pop_nonAntarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated water filtered'~(km^3~ind^-1~yr^-1))) + 
+       y = bquote('Projected water filtered'~(km^3~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(limits = c(1, 400),
-                breaks = c(5,10,25,100,250)) +
+  scale_y_log10(labels = scales::comma, limits = c(1, 2500),
+                breaks = c(1,5,10,25,100,250,1000,2500)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_filtration_Pop_nonAntarctic
 
-dev.copy2pdf(file="Annual_filtration_Pop_nonAntarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_filtration_Pop_nonAntarctic.pdf",  width=14, height=8)
+
+
+Total_filtered <- Annual_filtfeed %>%
+  group_by(SpeciesCode, region) %>%
+  filter(days_feeding == 100) %>% 
+  summarise(sp_annual_avg_curr = med_filt_curr/1e9,
+            sp_annual_avg_hist = med_filt_hist/1e9)
 
 
 # Northern Hemisphere prey, current
@@ -1219,7 +1357,7 @@ Annual_ingestion_PopCurr_nonAntarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(limits = c(1.5, 175),
                 breaks = c(5, 10, 25, 50, 100)) +
@@ -1228,7 +1366,7 @@ Annual_ingestion_PopCurr_nonAntarctic <- Annual_filtfeed %>%
         legend.position = "none")
 Annual_ingestion_PopCurr_nonAntarctic
 
-dev.copy2pdf(file="Annual_ingestion_PopCurr_nonAntarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_ingestion_PopCurr_nonAntarctic.pdf", width=14, height=9)
 
 
 # Northern Hemisphere prey, historic
@@ -1249,7 +1387,7 @@ Annual_ingestion_PopHist_nonAntarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(Mt~yr^-1))) +  
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(limits = c(1.5, 175),
                 breaks = c(5, 10, 25, 50, 100)) +
@@ -1258,7 +1396,52 @@ Annual_ingestion_PopHist_nonAntarctic <- Annual_filtfeed %>%
         legend.position = "none")
 Annual_ingestion_PopHist_nonAntarctic
 
-dev.copy2pdf(file="Annual_ingestion_PopHist_nonAntarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_ingestion_PopHist_nonAntarctic.pdf", width=14, height=9)
+
+
+# Northern Hemisphere prey, COMBINED
+Annual_ingestion_PopComb_nonAntarctic <- Annual_filtfeed %>% 
+  filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  
+  
+  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
+                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopComb_nonAntarctic
+
+dev.copy2pdf(file="Annual_ingestion_PopComb_nonAntarctic.pdf", width=14, height=8)
+
 
 
 # Annual Northern Hemisphere population krill prey, summary table
@@ -1442,7 +1625,7 @@ krill_daily_Ant_projection <- krill_daily_Ant_projection %>%
 krill_daily_Ant_projection %>% 
   group_by(Species) %>% 
   filter(Species == "Balaenoptera musculus") %>%
-  pull(daily_consumption_low_kg) %>%
+  pull(daily_consumption_high_kg) %>%
   summary()
 
 
@@ -1555,7 +1738,7 @@ summ_prey_annual_hist_pop_stats <- krill_yearly_pop_AntProj %>%
 
 days_feeding = rep(60:183, each = 5)
 Annual_filtfeed_Ant_projection <- krill_daily_Ant_projection %>% 
-  group_by(Species, region) %>% 
+  group_by(Species, SpeciesCode, region) %>% 
   summarise(
     #Individual
     med_filt = median(Engulf_cap_m3*daily_rate),
@@ -1572,7 +1755,7 @@ Annual_filtfeed_Ant_projection <- krill_daily_Ant_projection %>%
   mutate_at(c("med_filt", "IQR25_filt", "IQR75_filt"), funs(yr = .*days_feeding)) %>% 
   mutate_at(c("med_ingest_low_t", "IQR25_ingest_low_t", "IQR75_ingest_low_t"), funs(yr = .*days_feeding)) %>% 
   mutate_at(c("med_ingest_high_t", "IQR25_ingest_high_t", "IQR75_ingest_high_t"), funs(yr = .*days_feeding)) %>% 
-  left_join(pop_data, by = "Species") %>% 
+  left_join(pop_data, by = c("Species", "SpeciesCode")) %>% 
   mutate(
     
     #Current population
@@ -1618,7 +1801,7 @@ Annual_filtration_Pop_Antarctic <- Annual_filtfeed_Ant_projection %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated water filtered'~(km^3~ind^-1~yr^-1))) + 
+       y = bquote('Projected water filtered'~(km^3~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(1, 2500),
                 breaks = c(1,5,10,25,100,250,1000,2500)) +
@@ -1627,7 +1810,7 @@ Annual_filtration_Pop_Antarctic <- Annual_filtfeed_Ant_projection %>%
         legend.position = "none")
 Annual_filtration_Pop_Antarctic
 
-dev.copy2pdf(file="Annual_filtration_Pop_Antarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_filtration_Pop_Antarctic.pdf", width=14, height=8)
 
 
 # Southern Hemisphere prey, current
@@ -1647,16 +1830,16 @@ Annual_ingestion_PopCurr_Antarctic <- Annual_filtfeed_Ant_projection %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
-                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_ingestion_PopCurr_Antarctic
 
-dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic.pdf", width=14, height=9)
 
 
 
@@ -1677,242 +1860,137 @@ Annual_ingestion_PopHist_Antarctic <- Annual_filtfeed_Ant_projection %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
-                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_ingestion_PopHist_Antarctic
 
-dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic.pdf", width=14, height=10)
-
-
-#summary tables of population nutrients recycled per year (Figure 5) ----
-
-# Just doing Southern Ocean iron for now...
-
-Fe_calc_kg <- function(x) {
-  x*0.8*0.000146
-} # From Doughty et al. 2016, Roman and McCarthy 2010
-N_calc_kg <- function(x) {
-  x*0.8*0.0056
-} # see Roman et al. 2016, converted moles PON to g to kg
-P_calc_kg <- function(x) {
-  x*0.8*0.0089
-} # whale fecal average from Ratnarajah et al. 2014
+dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic.pdf", width=14, height=8)
 
 
 
-Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>% 
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(Fe = ~Fe_calc_kg(.))) %>%
-  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
-                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e9)*5e4)) %>% # Carbon production stimulated by Fe defecation in Mt C
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(C_respired_Mt = ~(.*(0.45*0.75))/1e9)) %>%   # Carbon respired by populations in Mt C
-  mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
-                   "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
-            .funs = list(C_exported_Mt = ~.*0.92))   #Excess productivity (C produced - C respired),  not exactly right, but very close. But how much is actually exported? 30%? CHECK REFS!!!
-  
-
-
-summ_prey_annual_curr_pop_Fe <- krill_yearly_pop_AntProj_Nutrients %>% 
-  group_by(SpeciesCode, region) %>% 
-  summarise(
-    Fe_produced_low_60days_IQR25 = round(quantile(prey_low60curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_60days_IQR75 = round(quantile(prey_low60curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_90days_IQR25 = round(quantile(prey_low90curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_90days_IQR75 = round(quantile(prey_low90curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_120days_IQR25 = round(quantile(prey_low120curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_120days_IQR75 = round(quantile(prey_low120curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_182.5days_IQR25 = round(quantile(prey_low182.5curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_low_182.5days_IQR75 = round(quantile(prey_low182.5curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    
-    Fe_produced_high_60days_IQR25 = round(quantile(prey_high60curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_60days_IQR75 = round(quantile(prey_high60curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_90days_IQR25 = round(quantile(prey_high90curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_90days_IQR75 = round(quantile(prey_high90curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_120days_IQR25 = round(quantile(prey_high120curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_120days_IQR75 = round(quantile(prey_high120curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_182.5days_IQR25 = round(quantile(prey_high182.5curr_Fe, probs = 0.25, na.rm = TRUE)/1000, 2),
-    Fe_produced_high_182.5days_IQR75 = round(quantile(prey_high182.5curr_Fe, probs = 0.75, na.rm = TRUE)/1000, 2)
-  ) %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 60 days feeding, IQR", 
-        c(Fe_produced_low_60days_IQR25, Fe_produced_low_60days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 60 days feeding, IQR", 
-        c(Fe_produced_high_60days_IQR25, Fe_produced_high_60days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 90 days feeding, IQR", 
-        c(Fe_produced_low_90days_IQR25, Fe_produced_low_90days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 90 days feeding, IQR", 
-        c(Fe_produced_high_90days_IQR25, Fe_produced_high_90days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 120 days feeding, IQR", 
-        c(Fe_produced_low_120days_IQR25, Fe_produced_low_120days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 120 days feeding, IQR", 
-        c(Fe_produced_high_120days_IQR25, Fe_produced_high_120days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 182.5 days feeding, IQR", 
-        c(Fe_produced_low_182.5days_IQR25, Fe_produced_low_182.5days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 182.5 days feeding, IQR", 
-        c(Fe_produced_high_182.5days_IQR25, Fe_produced_high_182.5days_IQR75), sep = "-")
- 
-
-summ_prey_annual_hist_pop_Fe <- krill_yearly_pop_AntProj_Nutrients %>% 
-  group_by(SpeciesCode, region) %>% 
-  summarise(
-    Fe_produced_low_60days_IQR25 = round(quantile(prey_low60hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_60days_IQR75 = round(quantile(prey_low60hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_90days_IQR25 = round(quantile(prey_low90hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_90days_IQR75 = round(quantile(prey_low90hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_120days_IQR25 = round(quantile(prey_low120hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_120days_IQR75 = round(quantile(prey_low120hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_182.5days_IQR25 = round(quantile(prey_low182.5hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_low_182.5days_IQR75 = round(quantile(prey_low182.5hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    
-    Fe_produced_high_60days_IQR25 = round(quantile(prey_high60hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_60days_IQR75 = round(quantile(prey_high60hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_90days_IQR25 = round(quantile(prey_high90hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_90days_IQR75 = round(quantile(prey_high90hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_120days_IQR25 = round(quantile(prey_high120hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_120days_IQR75 = round(quantile(prey_high120hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_182.5days_IQR25 = round(quantile(prey_high182.5hist_Fe, probs = 0.25, na.rm = TRUE)/1000, 0),
-    Fe_produced_high_182.5days_IQR75 = round(quantile(prey_high182.5hist_Fe, probs = 0.75, na.rm = TRUE)/1000, 0)
-  ) %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 60 days feeding, IQR", 
-        c(Fe_produced_low_60days_IQR25, Fe_produced_low_60days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 60 days feeding, IQR", 
-        c(Fe_produced_high_60days_IQR25, Fe_produced_high_60days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 90 days feeding, IQR", 
-        c(Fe_produced_low_90days_IQR25, Fe_produced_low_90days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 90 days feeding, IQR", 
-        c(Fe_produced_high_90days_IQR25, Fe_produced_high_90days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 120 days feeding, IQR", 
-        c(Fe_produced_low_120days_IQR25, Fe_produced_low_120days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 120 days feeding, IQR", 
-        c(Fe_produced_high_120days_IQR25, Fe_produced_high_120days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'random', 182.5 days feeding, IQR", 
-        c(Fe_produced_low_182.5days_IQR25, Fe_produced_low_182.5days_IQR75), sep = "-") %>% 
-  unite("Fe recycled (tonnes ind yr), 'Top50', 182.5 days feeding, IQR", 
-        c(Fe_produced_high_182.5days_IQR25, Fe_produced_high_182.5days_IQR75), sep = "-")
-
-
-
-summ_prey_annual_curr_pop_Cexport <- krill_yearly_pop_AntProj_Nutrients %>% 
-  group_by(SpeciesCode, region) %>% 
-  summarise(
-    C_export_low_60days_IQR25 = round(quantile(prey_low60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_low_60days_IQR75 = round(quantile(prey_low60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    C_export_low_90days_IQR25 = round(quantile(prey_low90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_low_90days_IQR75 = round(quantile(prey_low90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    C_export_low_120days_IQR25 = round(quantile(prey_low120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_low_120days_IQR75 = round(quantile(prey_low120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    C_export_low_182.5days_IQR25 = round(quantile(prey_low182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_low_182.5days_IQR75 = round(quantile(prey_low182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    
-    C_export_high_60days_IQR25 = round(quantile(prey_high60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_high_60days_IQR75 = round(quantile(prey_high60curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    C_export_high_90days_IQR25 = round(quantile(prey_high90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_high_90days_IQR75 = round(quantile(prey_high90curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    C_export_high_120days_IQR25 = round(quantile(prey_high120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_high_120days_IQR75 = round(quantile(prey_high120curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2),
-    C_export_high_182.5days_IQR25 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 2),
-    C_export_high_182.5days_IQR75 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 2)
-  ) %>% 
-  unite("C exported (Mt ind yr), 'random', 60 days feeding, IQR", 
-        c(C_export_low_60days_IQR25, C_export_low_60days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 60 days feeding, IQR", 
-        c(C_export_high_60days_IQR25, C_export_high_60days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'random', 90 days feeding, IQR", 
-        c(C_export_low_90days_IQR25, C_export_low_90days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 90 days feeding, IQR", 
-        c(C_export_high_90days_IQR25, C_export_high_90days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'random', 120 days feeding, IQR", 
-        c(C_export_low_120days_IQR25, C_export_low_120days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 120 days feeding, IQR", 
-        c(C_export_high_120days_IQR25, C_export_high_120days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'random', 182.5 days feeding, IQR", 
-        c(C_export_low_182.5days_IQR25, C_export_low_182.5days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
-        c(C_export_high_182.5days_IQR25, C_export_high_182.5days_IQR75), sep = "-")
-
-
-summ_prey_annual_hist_pop_Cexport <- krill_yearly_pop_AntProj_Nutrients %>% 
-  group_by(SpeciesCode, region) %>% 
-  summarise(
-    C_export_low_60days_IQR25 = round(quantile(prey_low60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_low_60days_IQR75 = round(quantile(prey_low60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    C_export_low_90days_IQR25 = round(quantile(prey_low90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_low_90days_IQR75 = round(quantile(prey_low90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    C_export_low_120days_IQR25 = round(quantile(prey_low120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_low_120days_IQR75 = round(quantile(prey_low120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    C_export_low_182.5days_IQR25 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_low_182.5days_IQR75 = round(quantile(prey_high182.5curr_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    
-    C_export_high_60days_IQR25 = round(quantile(prey_high60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_high_60days_IQR75 = round(quantile(prey_high60hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    C_export_high_90days_IQR25 = round(quantile(prey_high90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_high_90days_IQR75 = round(quantile(prey_high90hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    C_export_high_120days_IQR25 = round(quantile(prey_high120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_high_120days_IQR75 = round(quantile(prey_high120hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0),
-    C_export_high_182.5days_IQR25 = round(quantile(prey_high182.5hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.25, na.rm = TRUE), 0),
-    C_export_high_182.5days_IQR75 = round(quantile(prey_high182.5hist_Fe_C_produced_Mt_C_exported_Mt, probs = 0.75, na.rm = TRUE), 0)
-  ) %>% 
-  unite("C exported (Mt ind yr), 'random', 60 days feeding, IQR", 
-        c(C_export_low_60days_IQR25, C_export_low_60days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 60 days feeding, IQR", 
-        c(C_export_high_60days_IQR25, C_export_high_60days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'random', 90 days feeding, IQR", 
-        c(C_export_low_90days_IQR25, C_export_low_90days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 90 days feeding, IQR", 
-        c(C_export_high_90days_IQR25, C_export_high_90days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'random', 120 days feeding, IQR", 
-        c(C_export_low_120days_IQR25, C_export_low_120days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 120 days feeding, IQR", 
-        c(C_export_high_120days_IQR25, C_export_high_120days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'random', 182.5 days feeding, IQR", 
-        c(C_export_low_182.5days_IQR25, C_export_low_182.5days_IQR75), sep = "-") %>% 
-  unite("C exported (Mt ind yr), 'Top50', 182.5 days feeding, IQR", 
-        c(C_export_high_182.5days_IQR25, C_export_high_182.5days_IQR75), sep = "-")
-
-
-# Total range of C export 362 - 3775 Mt C yr-1 
-
-
-
-# Southern Hemisphere Fe, current
-Annual_ingestion_PopCurr_Antarctic <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+# Southern Hemisphere prey, COMBINED
+Annual_ingestion_PopComb_Antarctic <- Annual_filtfeed_Ant_projection %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
   geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe/1e6, color = Species), 
+  geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
             size = 1.5) +
   geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  
+  
+  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
             size = 1.5, linetype = "dashed") +
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
-                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
-Annual_ingestion_PopCurr_Antarctic
+Annual_ingestion_PopComb_Antarctic
 
-dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic.pdf", width=14, height=10)
+dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic.pdf", width=14, height=8)
+
+
+col_summ <- function(tbl, f) {
+  rbind(
+    tbl,
+    map(tbl, ~ if(is.numeric(.x)) f(.x) else NA)
+  )
+}
 
 
 
-# Southern Hemisphere prey, historic
-Annual_ingestion_PopHist_Antarctic <- Annual_filtfeed_Ant_projection_Nutrients %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
-  ggplot() +
+summ_SO_krill_surplus <- Annual_filtfeed_Ant_projection %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    
+    Med_low_curr = median(med_ingest_low_t_curr, na.rm = TRUE),
+    IQR25_low_t_curr = round(quantile(IQR25_ingest_low_t_curr, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_low_t_curr = round(quantile(IQR75_ingest_low_t_curr, probs = 0.25, na.rm = TRUE), 4),
+    
+    Med_high_curr = median(med_ingest_high_t_curr, na.rm = TRUE),
+    IQR25_high_t_curr = round(quantile(IQR25_ingest_high_t_curr, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_high_t_curr = round(quantile(IQR75_ingest_high_t_curr, probs = 0.25, na.rm = TRUE), 4),
+    
+    Med_low_hist = median(med_ingest_low_t_hist, na.rm = TRUE),
+    IQR25_low_t_hist = round(quantile(IQR25_ingest_low_t_hist, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_low_t_hist = round(quantile(IQR75_ingest_low_t_hist, probs = 0.25, na.rm = TRUE), 4),
+    
+    Med_high_hist = median(med_ingest_high_t_hist, na.rm = TRUE),
+    IQR25_high_t_hist = round(quantile(IQR25_ingest_high_t_hist, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_high_t_hist = round(quantile(IQR75_ingest_high_t_hist, probs = 0.25, na.rm = TRUE), 4)
+    
+  ) %>% 
+  col_summ(sum)
+
+
+
+#Maximum extent of krill surplus from these four species
+sum(summ_SO_krill_surplus$IQR75_low_t_hist)-sum(summ_SO_krill_surplus$IQR25_low_t_curr)
+
+#Minimum extent of krill surplus from these four species
+sum(summ_SO_krill_surplus$IQR25_low_t_hist)-sum(summ_SO_krill_surplus$IQR75_low_t_curr)
+
+#Most likely extent of krill surplus from these four species
+sum(summ_SO_krill_surplus$Med_low_hist)-sum(summ_SO_krill_surplus$Med_low_curr)
+
+
+#Maximum extent of krill surplus from these four species
+sum(summ_SO_krill_surplus$IQR75_high_t_hist)-sum(summ_SO_krill_surplus$IQR25_high_t_curr)
+
+#Minimum extent of krill surplus from these four species
+sum(summ_SO_krill_surplus$IQR25_high_t_hist)-sum(summ_SO_krill_surplus$IQR75_high_t_curr)
+
+#Most likely extent of krill surplus from these four species
+sum(summ_SO_krill_surplus$Med_high_hist)-sum(summ_SO_krill_surplus$Med_high_curr)
+
+
+
+# Krill surplus plot----
+krill_surplus <- krill_daily_Ant_projection %>% 
+  left_join(pop_data, by = "SpeciesCode") %>% 
+  mutate(
+    yearly_consumption_curr = (daily_consumption_low_kg/1000)*`Southern hemisphere population estimate (Christensen 2006)`*120,
+    yearly_consumption_hist = (daily_consumption_low_kg/1000)*`Southern hemisphere historic estimate (Christensen 2006)`*120
+    
+  ) %>%
+ 
+   ggplot() +
+  geom_flat_violin(aes(region, yearly_consumption_curr), alpha = .5) +
+  geom_flat_violin(aes(region, yearly_consumption_hist), alpha = .5) +
+  coord_flip() +
+  scale_y_log10(labels = scales::comma) +
+  theme_classic(base_size = 18) +
+  theme(legend.position = "none",
+        axis.text.y = element_text(face = "italic"))
+
+krill_surplus
+  
+  
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
@@ -1926,18 +2004,285 @@ Annual_ingestion_PopHist_Antarctic <- Annual_filtfeed_Ant_projection_Nutrients %
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Estimated prey consumed'~(Mt~ind^-1~yr^-1))) + 
+       y = bquote('Estimated prey consumed'~(Mt~yr^-1))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
-                breaks = c(0.5,1, 5, 10, 50, 100, 200, 400)) +
+                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
   theme_minimal(base_size = 24) +
   theme(strip.text = element_text(face = "italic"),
         legend.position = "none")
 Annual_ingestion_PopHist_Antarctic
 
-dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic.pdf", width=14, height=10)
 
 
 
+#summary tables of population nutrients recycled per year (Figure 5) ----
+
+# Just doing Southern Ocean iron for now...
+
+# From whale average in Ratnarajah et al. 2014
+Fe_total_dw <- function(x) {
+  (x*0.8)*0.25*0.146 # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
+} # From Doughty et al. 2016, Roman and McCarthy 2010 
+
+# THESE ARE NOT CORRECT ANYMORE
+N_calc_kg <- function(x) {
+  x*0.8*0.0056
+} # see Roman et al. 2016, converted moles PON to g to kg
+
+P_calc_kg <- function(x) {
+  x*0.8*0.0089
+} # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
+
+
+
+Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>% 
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(Fe = ~Fe_total_dw(.)/1000)) %>% # need to divide by 1000 to get the total iron recycled in tonnes
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
+                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e6)*11111.11)) %>% # Carbon production stimulated by Fe defecation in Mt C
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(C_respired_Mt = ~(.*(0.1*0.75))/1e6)) %>%   # CHECK THIS, SHOULD BE 0.1, not 0.45? Carbon respired by populations in Mt C
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
+                   "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
+            .funs = list(C_exported_Mt = ~.*0.92))   #This is in fact C export; Check Lavery et al. 2010 ref, pg 3
+  
+
+
+summ_SO_pop_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    
+    Fe_produced_med_curr_low = median(med_ingest_low_t_curr_Fe, na.rm = TRUE),
+    Fe_produced_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe, na.rm = TRUE),
+    Fe_produced_IQR75_curr_low = median(IQR75_ingest_low_t_curr_Fe, na.rm = TRUE),
+    
+    Fe_produced_med_curr_high = median(med_ingest_high_t_curr_Fe, na.rm = TRUE),
+    Fe_produced_IQR25_curr_high = median(IQR25_ingest_high_t_curr_Fe, na.rm = TRUE),
+    Fe_produced_IQR75_curr_high = median(IQR75_ingest_high_t_curr_Fe, na.rm = TRUE),
+    
+    Fe_produced_med_hist_low = median(med_ingest_low_t_hist_Fe, na.rm = TRUE),
+    Fe_produced_IQR25_hist_low = median(IQR25_ingest_low_t_hist_Fe, na.rm = TRUE),
+    Fe_produced_IQR75_hist_low = median(IQR75_ingest_low_t_hist_Fe, na.rm = TRUE),
+    
+    Fe_produced_med_hist_high = median(med_ingest_high_t_hist_Fe, na.rm = TRUE),
+    Fe_produced_IQR25_hist_high = median(IQR25_ingest_high_t_hist_Fe, na.rm = TRUE),
+    Fe_produced_IQR75_hist_high = median(IQR75_ingest_high_t_hist_Fe, na.rm = TRUE)
+    
+  ) %>% 
+  col_summ(sum)
+
+
+
+summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  group_by(SpeciesCode, region) %>% 
+  summarise(
+    
+    C_induced_med_curr_low = median(med_ingest_low_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR75_curr_low = median(IQR75_ingest_low_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
+
+    C_induced_med_curr_high = median(med_ingest_high_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR25_curr_high = median(IQR25_ingest_high_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR75_curr_high = median(IQR75_ingest_high_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
+
+    C_induced_med_hist_low = median(med_ingest_low_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR25_hist_low = median(IQR25_ingest_low_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR75_hist_low = median(IQR75_ingest_low_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
+
+    C_induced_med_hist_high = median(med_ingest_high_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR25_hist_high = median(IQR25_ingest_high_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
+    C_induced_IQR75_hist_high = median(IQR75_ingest_high_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
+    
+    
+    C_respired_med_curr_low = median(med_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_curr_low = median(IQR25_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_curr_low = median(IQR75_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+    
+    C_respired_med_curr_high = median(med_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_curr_high = median(IQR25_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_curr_high = median(IQR75_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),     
+    
+    C_respired_med_hist_low = median(med_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_hist_low = median(IQR25_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_hist_low = median(IQR75_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE), 
+    
+    C_respired_med_hist_high = median(med_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_hist_high = median(IQR25_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_hist_high = median(IQR75_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),                            
+    
+    
+    C_export_med_curr_low = median(med_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_curr_low = median(IQR75_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+
+    C_export_med_curr_high = median(med_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_curr_high = median(IQR25_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_curr_high = median(IQR75_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+
+    C_export_med_hist_low = median(med_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_hist_low = median(IQR25_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_hist_low = median(IQR75_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+
+    C_export_med_hist_high = median(med_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_hist_high = median(IQR25_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_hist_high = median(IQR75_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE)
+
+  )  %>% 
+  col_summ(sum)
+
+# Total difference in C export 249 (low) - 323 (high) Mt C yr-1 
+# In 1900 global CO2 emissions was ~1958 Mt; whale C export was 279-363Mt or 14-18% of global CO2 emissions at the time
+# In 2000 global CO2 emissions was ~24,670 Mt; whale C export was 30-40Mt or 0.12-0.16% of global CO2 emissions at the time
+
+
+# Southern Hemisphere Fe, current
+Annual_ingestion_PopCurr_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe, ymax = IQR75_ingest_low_t_curr_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe, ymax = IQR75_ingest_high_t_curr_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Estimated Fe recycled'~(tonnes~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(1, 5000),
+                breaks = c(1,10, 100, 500, 1000, 2500, 5000)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopCurr_Antarctic_Fe
+
+dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic_Fe.pdf", width=14, height=9)
+
+
+
+
+# Southern Hemisphere Fe, historic
+Annual_ingestion_PopHist_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe, ymax = IQR75_ingest_low_t_hist_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe, ymax = IQR75_ingest_high_t_hist_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Projected Fe recycled'~(tonnes~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(1, 12000),
+                breaks = c(1,10, 100, 500, 1000, 2500, 5000, 10000)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopHist_Antarctic_Fe
+
+dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic_Fe.pdf", width=14, height=9)
+
+
+# Southern Hemisphere Fe, COMBINED
+Annual_ingestion_PopComb_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe, ymax = IQR75_ingest_low_t_hist_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe, ymax = IQR75_ingest_high_t_hist_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe, ymax = IQR75_ingest_low_t_curr_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe, ymax = IQR75_ingest_high_t_curr_Fe, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  
+  
+  
+  geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Projected Fe recycled'~(tonnes~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(2, 12000),
+                breaks = c(1, 10, 100, 500, 1000, 2500, 5000, 10000)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopComb_Antarctic_Fe
+
+dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_Fe.pdf", width=14, height=8)
+
+
+
+
+# Southern Hemisphere C net, COMBINED
+
+Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
+  ggplot() +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, 
+                  x=days_feeding), 
+              fill = "grey70", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  
+  
+  
+  geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
+            size = 1.5) +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  scale_colour_manual(values = pal) +
+  facet_grid(~Species) +   # Can add region in here if desired
+  labs(x = "Days feeding",
+       y = bquote('Projected C exported'~(Mt~yr^-1))) + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = function(x) sprintf("%g", x),
+                limits = c(0.01, 120),
+                breaks = c(0.01, 0.1, 1, 10, 100)) +
+  theme_minimal(base_size = 24) +
+  theme(strip.text = element_text(face = "italic"),
+        legend.position = "none")
+Annual_ingestion_PopComb_Antarctic_C_export
+
+dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_C_export.pdf", width=14, height=8)
 
 

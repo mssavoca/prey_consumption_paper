@@ -1490,11 +1490,11 @@ d_Ant_nutrients_summ <- d_Ant_nutrients %>%
   filter(time_rec == "historical") %>% 
   group_by(Species) %>% 
   summarise(Fe_med_kg = mean(Fe_best_est_kg),
-            C_produced_Mt = ((mean(Fe_best_est_kg)*0.75)/1e9)*5e4,
+            C_produced_Mt = ((mean(Fe_best_est_kg)*0.75)/1e9)*11111.11, 
             C_respired_Mt  = mean(C_respired)/1e9,
             Total_C_exported_Mt = C_produced_Mt - C_respired_Mt)
 
-pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "navy", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
 
 Fe_recycled_Antarctic <- ggplot(data = d_Ant_nutrients) +
   geom_boxplot(aes(x = Species, 
