@@ -440,9 +440,10 @@ missing_deploy <- tag_guide %>%
          "Total Tag On Time HH:MM:SS _" > 1)
 
 
-filtration_master %>%
-  group_by(Species) %>%
-  summarise(med_length = mean(whaleLength, na.rm = TRUE))
+ss_table <- filtration_master %>%
+  filter(Phase == "Total", Region != "Chile") %>% 
+  group_by(Species, Region, Study_Area) %>%
+  summarise(sample_size = n())
 
 
 

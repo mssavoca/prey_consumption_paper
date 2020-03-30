@@ -315,6 +315,10 @@ daynight_rates <- lunge_rates %>%
   #MODIFIED BY MATT TO ADD BRYDE'S
   bind_rows(Brydes_lunges_for_join)
 
+ss_table_dn <- daynight_rates %>%
+  group_by(species_code, region) %>%
+  summarise(sample_size = n())
+
 
 # %>% 
 #   # Modified by Matt here
@@ -2035,18 +2039,34 @@ P_calc_kg <- function(x) {
 } # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
 
 
+Fe_t_to_C_export_t <- function(x) {
+  x * 1e6 *             #convert tonnes to grams
+    0.01791 *           #convert grams iron to moles iron
+    5e4 * 12.0107 /     #convert to moles carbon exported (Lavery et al. 2010), convert back to grams carbon
+    1e6                 #convert to tonnes carbon
+}
 
-Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>% 
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(Fe = ~Fe_total_dw(.)/1000)) %>% # need to divide by 1000 to get the total iron recycled in tonnes
-  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
-                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e6)*11111.11)) %>% # Carbon production stimulated by Fe defecation in Mt C
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(C_respired_Mt = ~(.*(0.1*0.75))/1e6)) %>%   # CHECK THIS, SHOULD BE 0.1, not 0.45? Carbon respired by populations in Mt C
-  mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
-                   "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
-            .funs = list(C_exported_Mt = ~.*0.92))   #This is in fact C export; Check Lavery et al. 2010 ref, pg 3
+
+Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
   
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), 
+            .funs = list(Fe = ~Fe_total_dw(.)/1000)) %>% # need to divide by 1000 to get the total iron recycled in tonnes
+  
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
+                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), 
+            .funs = list(C_produced_Mt = ~(Fe_t_to_C_export_t(.)*3)/1e6)) %>% # Carbon production (~3x what is exported) stimulated by Fe defecation in Mt C
+  
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
+                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), 
+            .funs = list(C_exported_Mt = ~Fe_t_to_C_export_t(.)/1e6)) %>% 
+  
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), 
+            .funs = list(C_respired_Mt = ~(.*(0.45*0.75))/1e6))  # Carbon respired by populations in Mt C
+
+
+
 
 
 summ_SO_pop_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
@@ -2112,31 +2132,37 @@ summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>%
     C_respired_IQR75_hist_high = median(IQR75_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),                            
     
     
-    C_export_med_curr_low = median(med_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR75_curr_low = median(IQR75_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_med_curr_low = median(med_ingest_low_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_curr_low = median(IQR75_ingest_low_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
 
-    C_export_med_curr_high = median(med_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR25_curr_high = median(IQR25_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR75_curr_high = median(IQR75_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
+    C_export_med_curr_high = median(med_ingest_high_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_curr_high = median(IQR25_ingest_high_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_curr_high = median(IQR75_ingest_high_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
 
-    C_export_med_hist_low = median(med_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR25_hist_low = median(IQR25_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR75_hist_low = median(IQR75_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-
-    C_export_med_hist_high = median(med_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR25_hist_high = median(IQR25_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE),
-    C_export_IQR75_hist_high = median(IQR75_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, na.rm = TRUE)
+    C_export_med_hist_low = median(med_ingest_low_t_hist_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_hist_low = median(IQR25_ingest_low_t_hist_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_hist_low = median(IQR75_ingest_low_t_hist_Fe_C_exported_Mt, na.rm = TRUE),
+    
+    C_export_med_hist_high = median(med_ingest_high_t_hist_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR25_hist_high = median(IQR25_ingest_high_t_hist_Fe_C_exported_Mt, na.rm = TRUE),
+    C_export_IQR75_hist_high = median(IQR75_ingest_high_t_hist_Fe_C_exported_Mt, na.rm = TRUE),
 
   )  %>% 
   col_summ(sum)
 
-# Total difference in C export 249 (low) - 323 (high) Mt C yr-1 
-# In 1900 global CO2 emissions was ~1958 Mt; whale C export was 279-363Mt or 14-18% of global CO2 emissions at the time
-# In 2000 global CO2 emissions was ~24,670 Mt; whale C export was 30-40Mt or 0.12-0.16% of global CO2 emissions at the time
+# Total difference in C export in Mt C yr-1 
+# In 1900 global CO2 emissions was ~1958 Mt; whale C export was 57-196Mt or 4-10% of global CO2 emissions at the time
+# In 2000 global CO2 emissions was ~24,670 Mt; whale C export was 6-23Mt or 0.02-0.09% of global CO2 emissions at the time
+
+# Total Fe recycled by E. superba population
+133e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
+  1.5917e-7 * # converting from 2.85 nmol iron recycled per day per krill in g
+  120 /     # number of productive days in Austral summer
+  1e12      # converting from grams to t
 
 
-# Southern Hemisphere Fe, current
+I # Southern Hemisphere Fe, current
 Annual_ingestion_PopCurr_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
@@ -2285,4 +2311,17 @@ Annual_ingestion_PopComb_Antarctic_C_export
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_C_export.pdf", width=14, height=8)
 
+
+# Old code below here
+
+Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>% 
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(Fe = ~Fe_total_dw(.)/1000)) %>% # need to divide by 1000 to get the total iron recycled in tonnes
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
+                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e6)*11111.11)) %>% # Carbon production stimulated by Fe defecation in Mt C
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(C_respired_Mt = ~(.*(0.1*0.75))/1e6)) %>%   # CHECK THIS, SHOULD BE 0.1, not 0.45? Carbon respired by populations in Mt C
+  mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
+                   "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
+            .funs = list(C_exported_Mt = ~.*0.92))   #This is in fact C export; Check Lavery et al. 2010 ref, pg 3
 
