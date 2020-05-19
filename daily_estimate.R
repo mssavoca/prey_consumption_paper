@@ -14,10 +14,27 @@ abbr_binom <- function(binom) {
 
 # stuff from Max to generate data ----
 
-load("rates.RData")
-load("tag_guide4.RData")
-load("rates.RData")
-load("rates[1].RData")
+load("rates_CATS_updated_5_14_20.RData") # CATS deployment summary
+
+load("rates_MedTermTag.RData") # Medium-term deployment summary
+
+load("rates[1].RData") # DTAG deployment summary
+  
+dtag_lunges_long <- dtag_lunges_long %>% 
+  mutate(prey_general = "Krill")
+
+All_rorqual_deployments <- dtag_lunges_long %>% 
+  bind_rows(lunge_rates)
+
+
+load("tag_guide4.RData") 
+#load("rates.RData")
+# load("daynights_krill.RData") # This keeps its original name "krill_daily" here
+# load("daynights_fish.RData") # This keeps its original name "fish_daily" here
+# load("daynights_AntProj.RData")
+
+load("balaenid_sampled.RData")
+
 
 # droned whales---
 # non-tagged unique individuals from KC
@@ -250,7 +267,7 @@ pop_data <- read_excel("Filtration project_Whale population and feeding informat
   ))
 
 
-
+write.csv(x = pop)
 
 
 # data projected for Antarctic blue and fin whales
@@ -347,8 +364,10 @@ dur_weight <- function(dur) {
 plot(dur_weight, 
      xlim = c(0, 24), 
      ylim = c(0, 0.6),
-     xlab = "dur",
+     xlab = "Tag duration (hours)",
      ylab = "weight")
+
+dev.copy2pdf(file="weighting fuction.pdf", width=4.5, height=4)
  
 # Generate feeding rate distributions for each species
 iter <- 1000
@@ -382,6 +401,67 @@ krill_rate_estimates <- estimate_rate("Krill", 1, 1)
 
 
 
+# day_dist <- daynight_rates %>% 
+#   filter(species_code == "bw") %>% 
+#   mutate(dur_bucket = cut_width(day_dur, 1, boundary = 0)) %>% 
+#   group_by(dur_bucket) %>% 
+#   summarise(mean_rate = mean(day_rate),
+#             sd_rate = sd(day_rate)) 
+# 
+# 
+# daynight_rates %>% 
+#   filter(species_code == "bw") %>% 
+#   mutate(dur_bucket = cut_width(day_dur, 1, boundary = 0)) %>% 
+#   ggplot(aes(day_dur, day_rate)) + geom_point() + geom_smooth(method = "lm")
+# 
+# ggplot(day_dist, aes(dur_bucket, mean_rate)) +
+#   geom_pointrange(aes(ymin = mean_rate-sd_rate , ymax = mean_rate+sd_rate))
+
+
+
+
+plot(dur, pred_err, type = "l")
+
+dur_sd <- function(dur) {
+  Asym <- -1.846
+  R0 <- 12.67
+  lrc <- -2.057
+  
+  pred_err <- Asym + (R0 - Asym) * exp(-exp(lrc) * dur)
+  pred_err_10 <- Asym + (R0 - Asym) * exp(-exp(lrc) * 10)
+  ifelse(dur > 10, pred_err_10, pred_err)/2 
+}
+
+
+estimate_rate_DEC <- function(prey, min_lunges, min_dur) {
+  daynight_rates %>%
+    filter(prey_general == prey,
+           day_lunges + night_lunges >= min_lunges,
+           day_dur + night_dur >= min_dur) %>% 
+    group_by(species_code, region) %>% 
+    group_modify(
+      function(data, keys) {
+        tibble(i = 1:iter) %>% 
+          mutate(
+            dep_row = sample(1:nrow(data), size = iter, replace = TRUE),
+            mean_day = data$day_rate[dep_row],
+            sd_day = dur_sd(data$day_dur[dep_row]),
+            day_rate = rnorm(iter, mean_day, sd_day),
+            night_rate = sample(
+              data$night_rate[data$night_dur > 0], 
+              size = iter,
+              replace = TRUE,
+              prob = data$night_dur[data$night_dur > 0]
+            )
+          )
+      }
+    )
+}
+
+
+krill_rate_estimates_DEC <- estimate_rate_DEC("Krill", 1, 1)
+
+
 
 krill_biomass_estimates <- krill_rate_estimates %>% 
   rename(SpeciesCode = "species_code") %>% 
@@ -407,8 +487,38 @@ krill_rate_estimates %>%
   mutate(daily_rate = day_rate * 12.5 + night_rate * 11.5) %>% 
   pull(daily_rate) %>% 
   quantile(c(0.25, 0.5, 0.75, 0.95))
-#        25%      50%      75%      95% 
-#   148.2142 206.9413 289.0931 454.3588 
+# 25%      50%      75%      95% 
+#   153.2969 208.8918 289.6198 471.0381
+
+
+krill_rate_estimates_DEC %>% 
+  filter(species_code == "bw") %>% 
+  mutate(daily_rate = day_rate * 12.5 + night_rate * 11.5) %>% 
+  pull(daily_rate) %>% 
+  quantile(c(0.25, 0.5, 0.75, 0.95))
+# 25%      50%      75%      95% 
+#   140.1731 205.0902 287.1584 457.2846 
+
+weighted_MFC <- krill_rate_estimates %>% 
+  filter(species_code == "bw") %>% 
+  mutate(daily_rate = day_rate * 12.5 + night_rate * 11.5)
+
+Conf_int_DEC <- krill_rate_estimates_DEC %>% 
+  filter(species_code == "bw") %>% 
+  mutate(daily_rate = day_rate * 12.5 + night_rate * 11.5)
+
+
+# two methods both used in meta analyses with dispararte SS. Uncer most condifiotns they are the same.
+# we ran dave and Max's methods for the bw data and here are teh ecdf. as you can see the reuslts are the same.
+  ggplot(weighted_MFC, aes(daily_rate)) +
+    stat_ecdf(color = "red") +
+    stat_ecdf(data = Conf_int_DEC, color = "blue") + 
+    labs(y = "cumulative probability",
+        x = "blue whale daily lunge rate") +
+    xlim(0,500) +
+    theme_minimal()
+
+
 krill_rate_estimates %>% 
   filter(species_code == "bw") %>% 
   ggplot(aes(day_rate)) +
@@ -512,7 +622,7 @@ krill_daily %>%
   xlim(0,20000)
 p
 
-save(daynight_rates, krill_daily, file = "data/outputs/daynights.RData")
+save(krill_daily, file = "daynights_krill.RData")
 
 
 
@@ -624,6 +734,7 @@ ggplot(aes(daily_consumption_low_kg)) +
   xlim(0,10000)
 p
 
+save(fish_daily, file = "daynights_fish.RData")
 
 # generating plots and tables for paper ----
 
@@ -632,12 +743,12 @@ pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. eden
 
 #Supplemental figure of whale lengths
 All_droned_lengths <- whale_lengths %>% 
-  filter(!SpeciesCode %in% c("bs", "be")) %>% 
+  filter(!SpeciesCode %in% c("bs")) %>% 
   #filter(ID != "bw180904-44") %>% 
   group_by(name, SpeciesCode) %>% 
   ungroup %>% 
   #mutate(sp_lbl = factor(abbr_binom(Species)) %>% fct_rev) %>% 
-  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae","B. physalus", "B. musculus"), 
+  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. edeni","B. physalus", "B. musculus"), 
              y = length,
              fill = abbr_binom(Species))) +
   geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
@@ -654,7 +765,34 @@ All_droned_lengths
 
 dev.copy2pdf(file="All_droned_lengths.pdf", width=12, height=8)
 
-#summary tables of lunges, water filtered, and prey consumed per day (Figure 2)----
+
+Engulfment_capacity <- whale_lengths %>% 
+  filter(!SpeciesCode %in% c("bs")) %>% 
+  #filter(ID != "bw180904-44") %>% 
+  group_by(name, SpeciesCode) %>% 
+  ungroup %>% 
+  #mutate(sp_lbl = factor(abbr_binom(Species)) %>% fct_rev) %>% 
+  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "B. edeni","M. novaeangliae", "B. physalus", "B. musculus"), 
+             y = Engulfment_m3,
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.5) +
+  geom_point(position = position_jitter(width = .05), alpha = 0.6) +
+  coord_flip() +
+  scale_fill_manual(values = pal) +
+  labs(x = "Species",
+       y = bquote('Engulfment capacity'~(m^3))) +
+  scale_y_log10(labels = scales::comma,
+                breaks = c(1,5,10,50,100)) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.y = element_text(face = "italic"))
+Engulfment_capacity
+
+dev.copy2pdf(file="Engulfment_capacity.pdf", width=14, height=6.5)
+
+ ##Figure 2----
+#summary tables of lunges, water filtered, and prey consumed per day 
 summ_stats_all <- fish_daily %>%    # toggle between fish and krill
   group_by(SpeciesCode, region) %>% 
   summarise(
@@ -1632,6 +1770,9 @@ krill_daily_Ant_projection %>%
   pull(daily_consumption_high_kg) %>%
   summary()
 
+save(krill_daily_Ant_projection, file = "daynights_AntProj.RData")
+
+
 
 krill_yearly_pop_AntProj <- krill_daily_Ant_projection %>% 
   left_join(pop_data, by = "SpeciesCode") %>% 
@@ -2024,19 +2165,35 @@ Annual_ingestion_PopHist_Antarctic
 
 # Just doing Southern Ocean iron for now...
 
-# From whale average in Ratnarajah et al. 2014
+rnorm_trunc <- function(n, mean = 0, sd = 1, lower = 0, upper = Inf) {
+  result <- rnorm(n, mean, sd)
+  result[result < lower] <- lower
+  result[result > upper] <- upper
+  result
+}
+
+
+# Fe_total_dw <- function(x) {
+#   (x*0.8)*0.25*0.146 # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
+# } # From Doughty et al. 2016, Roman and McCarthy 2010 
+
 Fe_total_dw <- function(x) {
-  (x*0.8)*0.25*0.146 # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
-} # From Doughty et al. 2016, Roman and McCarthy 2010 
+  (x*runif(length(x), 0.7, 0.9))*   # saying the amount of iron excreted ranges uniformly betweek 70-90% ingested, see Ratnarajah et al. 2016
+    0.25*
+    rnorm(length(x), 0.146, 0.135) # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
+} # average and sd of Fe conc in whale feces from: Ratnarajah et al. 2014  
 
-# THESE ARE NOT CORRECT ANYMORE
-N_calc_kg <- function(x) {
-  x*0.8*0.0056
-} # see Roman et al. 2016, converted moles PON to g to kg
 
-P_calc_kg <- function(x) {
-  x*0.8*0.0089
-} # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
+## THESE ARE NOT CORRECT ANYMORE
+# N_calc_kg <- function(x) {
+#   x*0.8*0.25*0.0056 # THINK ABOUT THE 0.25
+# } # see Roman et al. 2016, converted moles PON to g to kg
+# 
+# P_calc_kg <- function(x) {
+#   x*0.8*0.0089
+# } # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
+
+
 
 
 Fe_t_to_C_export_t <- function(x) {
@@ -2045,6 +2202,7 @@ Fe_t_to_C_export_t <- function(x) {
     5e4 * 12.0107 /     #convert to moles carbon exported (Lavery et al. 2010), convert back to grams carbon
     1e6                 #convert to tonnes carbon
 }
+
 
 
 Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
@@ -2059,11 +2217,21 @@ Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
   
   mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
                    "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), 
-            .funs = list(C_exported_Mt = ~Fe_t_to_C_export_t(.)/1e6)) %>% 
+            .funs = list(C_exported_Mt = ~Fe_t_to_C_export_t(.)*
+                           runif(length(.), 0.6, 1)/1e6)) 
   
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), 
-            .funs = list(C_respired_Mt = ~(.*(0.45*0.75))/1e6))  # Carbon respired by populations in Mt C
+## estimated C respired is as simple as:
+# pre-whaling
+quantile(runif(10000, 0.003, 0.006)*4760) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
+
+# post-whaling
+quantile(runif(10000, 0.003, 0.006)*580) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
+
+
+  # mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+  #                  "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), 
+  #           .funs = list(C_respired_Mt = ~(.*(0.1*
+  #                                               runif(length(.), 0.25, 0.75))/1e6)))  # Carbon respired by populations in Mt C
 
 
 
@@ -2114,24 +2282,7 @@ summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>%
     C_induced_IQR25_hist_high = median(IQR25_ingest_high_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
     C_induced_IQR75_hist_high = median(IQR75_ingest_high_t_hist_Fe_C_produced_Mt, na.rm = TRUE),
     
-    
-    C_respired_med_curr_low = median(med_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR25_curr_low = median(IQR25_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR75_curr_low = median(IQR75_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
-    
-    C_respired_med_curr_high = median(med_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR25_curr_high = median(IQR25_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR75_curr_high = median(IQR75_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),     
-    
-    C_respired_med_hist_low = median(med_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR25_hist_low = median(IQR25_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR75_hist_low = median(IQR75_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE), 
-    
-    C_respired_med_hist_high = median(med_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR25_hist_high = median(IQR25_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
-    C_respired_IQR75_hist_high = median(IQR75_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),                            
-    
-    
+
     C_export_med_curr_low = median(med_ingest_low_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
     C_export_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
     C_export_IQR75_curr_low = median(IQR75_ingest_low_t_curr_Fe_C_exported_Mt, na.rm = TRUE),
@@ -2156,13 +2307,23 @@ summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>%
 # In 2000 global CO2 emissions was ~24,670 Mt; whale C export was 6-23Mt or 0.02-0.09% of global CO2 emissions at the time
 
 # Total Fe recycled by E. superba population
-133e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
+665e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
   1.5917e-7 * # converting from 2.85 nmol iron recycled per day per krill in g
-  120 /     # number of productive days in Austral summer
-  1e12      # converting from grams to t
+182.5 /     # number of productive days in Austral summer
+  1e12      # converting from grams to Mt
 
 
-I # Southern Hemisphere Fe, current
+
+Fe_t_to_C_export_t(
+665e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
+  1.5917e-7 * # converting from 2.85 nmol iron recycled per day per krill in g
+  182.5 /     # number of productive days in Austral summer
+  1e12      # converting from grams to Mt
+)*
+  0.2 # the porportion of iron in krill feces that persists in the photic zone for use by phytoplankton
+
+
+# Southern Hemisphere Fe, current
 Annual_ingestion_PopCurr_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
@@ -2324,4 +2485,22 @@ Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
   mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
                    "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
             .funs = list(C_exported_Mt = ~.*0.92))   #This is in fact C export; Check Lavery et al. 2010 ref, pg 3
+
+
+# C_respired_med_curr_low = median(med_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR25_curr_low = median(IQR25_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR75_curr_low = median(IQR75_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+# 
+# C_respired_med_curr_high = median(med_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR25_curr_high = median(IQR25_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR75_curr_high = median(IQR75_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),     
+# 
+# C_respired_med_hist_low = median(med_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR25_hist_low = median(IQR25_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR75_hist_low = median(IQR75_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE), 
+# 
+# C_respired_med_hist_high = median(med_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR25_hist_high = median(IQR25_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
+# C_respired_IQR75_hist_high = median(IQR75_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),                            
+
 

@@ -176,7 +176,7 @@ dev.copy2pdf(file="Map of tag deployments.pdf", width=15, height=8)
 
 
 
- ##########################################
+##########################################
 # load, clean, combine and summarize data----
 ##########################################
 
@@ -436,3 +436,63 @@ PreyConsumpt_Eq2
 dev.copy2pdf(file="PreyConsumpt_Eq2.pdf", width=18, height=6)
        
 
+
+# Mass Specific Energy Intake ----
+## of all species and all prey types!
+
+load("daynights_krill.RData") # This keeps its original name "krill_daily" here
+load("daynights_fish.RData") # This keeps its original name "fish_daily" here
+load("daynights_AntProj.RData") # This keeps its original name "krill_daily_Ant_proj" here
+load("balaenid_sampled.RData")
+
+krill_daily_Ant_proj_forjoin <- krill_daily_Ant_projection %>% 
+  filter(SpeciesCode %in% c("bw", "bp")) %>% 
+  mutate(prey_type = "Euphausia superba")
+fish_daily <- fish_daily %>% 
+  mutate(prey_type = "forage fish")
+krill_daily <- krill_daily %>% 
+  mutate(prey_type = case_when(region == "Polar" ~ "E. superba",
+                               region == "Temperate" ~ "non-E. superba krill"))
+
+balaenid_sampled <- balaenid_sampled %>% 
+  mutate(Mass_est_kg = case_when(Species == "Balaena mysticetus" ~ 70000,
+                                 Species == "Eubalaena glacialis" ~ 55000),
+         Mass_specifc_energy_intake_best_high_kJ = prey_t_longday*1000*6620/Mass_est_kg,
+         Mass_specifc_energy_intake_best_low_kJ = prey_t_shortday*1000*6620/Mass_est_kg,
+         prey_type = "copepods")
+
+combined_en <- balaenid_sampled  %>% 
+  bind_rows(
+    select(krill_daily,Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ, prey_type),
+    select(fish_daily, prey_type, Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ),
+    #select(krill_daily_Ant_proj_forjoin, prey_type, Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ)
+  ) %>% 
+  rename(`Lower best estimate` = Mass_specifc_energy_intake_best_low_kJ,
+         `Upper best estimate` = Mass_specifc_energy_intake_best_high_kJ) %>% 
+  pivot_longer(`Lower best estimate`:`Upper best estimate`,
+               names_to = "est_type", values_to = "Mass_specifc_energy_intake_kJ") %>% 
+  mutate(est_type = fct_relevel(factor(est_type), "Low"))
+
+
+MS_En_in <- ggplot(combined_en, 
+              aes(fill = abbr_binom(Species))) +
+  geom_boxplot(aes(x = abbr_binom(Species), 
+                   y = Mass_specifc_energy_intake_kJ),
+               outlier.shape = NA) +
+  facet_grid(.~prey_type, scales = "free") +
+  geom_hline(yintercept = 80, linetype = "dashed") +
+  scale_fill_manual(values = pal) +
+  labs(x = "Species",
+       y = bquote('Mass specific energy intake'~(kJ~kg^-1~d^-1)),
+       fill = "Species") + 
+  theme_bw(base_size = 18) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   face = "italic"),
+        legend.text = element_text(face = "italic")) +
+  scale_y_log10(labels = scales::comma, limits = c(50, 5000),
+                breaks = c(50,100,250,500,1000,2500,5000))
+MS_En_in
+
+  #Save pdf of plot
+dev.copy2pdf(file="Mass_specific_En_in.pdf", width=14, height=6)
+ 
