@@ -30,7 +30,7 @@ abbr_binom = function(binom) {
 # Supplemental map figure of tag deployments ----
 
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", 
-         "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", 
+         "B. brydei" = "darkorchid3",  "M. novaeangliae" = "gray30", 
          "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2",
          "B. mysticetus" = "#4304ff", "E. glacialis" = "#ff9f04")
 
@@ -59,14 +59,20 @@ bw_az <- data.frame(
 )
 
 bw_cce <- data.frame(
-  lon = rep(seq(-150, -125, length.out = 14), each = 8), 
+  lon = rep(seq(-161, -131, length.out = 16), each = 8), 
   lat = rep(seq(26, 40, length.out = 8)),
   Species = "Balaenoptera musculus"
 )
 
 bp_cce <- data.frame(
-  lon = rep(seq(-145, -130, length.out = 7), each = 3), 
+  lon = rep(seq(-156, -136, length.out = 9), each = 3), 
   lat = rep(seq(42, 45, length.out = 3)),
+  Species = "Balaenoptera physalus"
+)
+
+bp_cce2 <- data.frame(
+  lon = rep(seq(-156, -153.5, length.out = 2)), 
+  lat = 46.5,
   Species = "Balaenoptera physalus"
 )
 
@@ -90,8 +96,8 @@ bp_az <- data.frame(
 
 
 be <- data.frame(
-  lon = rep(seq(3, 15, length.out = 7)), 
-  lat = -34,
+  lon = rep(seq(6, 13, length.out = 5), each = 2), 
+  lat = rep(seq(-34, -36, length.out = 2)),
   Species = "Balaenoptera edeni"
 )
 
@@ -113,18 +119,18 @@ mn_wap <- data.frame(
 )
 
 mn_cce <- data.frame(
-  lon = rep(seq(-160, -154, length.out = 4), each = 20), 
-  lat = rep(seq(25, 50, length.out = 20)),
+  lon = rep(seq(-170, -164, length.out = 4), each = 20), 
+  lat = rep(seq(22, 50, length.out = 20)),
   Species = "Megaptera novaeangliae"
 )
 mn_cce2 <- data.frame(
-  lon = rep(seq(-159, -155, length.out = 3)), 
-  lat = 51.32,
+  lon = rep(seq(-169, -165, length.out = 3)), 
+  lat = 51.5,
   Species = "Megaptera novaeangliae"
 )
 
 mn_sa <- data.frame(
-  lon = rep(seq(6, 12, length.out = 4), each = 2), 
+  lon = rep(seq(6.5, 12.5, length.out = 4), each = 2), 
   lat = rep(seq(-30, -32, length.out = 2)),
   Species = "Megaptera novaeangliae"
 )
@@ -141,7 +147,7 @@ mn_nor <- data.frame(
   Species = "Megaptera novaeangliae"
 )
 
-whale_points <- bind_rows(bm, eg, eg2, bw_az, bw_cce, bp_cce,
+whale_points <- bind_rows(bm, eg, eg2, bw_az, bw_cce, bp_cce, bp_cce2,
                           bp_gr, bp_sw, bp_az, be, bb, bb2,
                           mn_wap, mn_sw, mn_sa, mn_cce, mn_cce2)
 
@@ -185,10 +191,10 @@ prey_predict <- read_excel("PreyIngestPredict.xlsx") %>% mutate(dummy = 1)
 prey_predict_w_M <- tibble(M_kg = seq(5000,120000,5000), dummy =1) %>%
   full_join(prey_predict, by = "dummy") %>% 
   select(-"dummy") %>% 
-  mutate(R = `Intercept (A)`*M_kg^`Exponent (B)`,
-         R_compressed_90days = (R*365)/90,
-         R_compressed_100days = (R*365)/100,
-         R_compressed_120days = (R*365)/120)
+  mutate(R = `Intercept (α)`*M_kg^`Exponent (β)`,
+         R_compressed_90days = (0.83*R*365)/90,
+         R_compressed_100days = (0.83*R*365)/100,
+         R_compressed_120days = (0.83*R*365)/120)
 
 
 # read in data for predictions from BMR-->FMR of daily ration (R) from literature
@@ -360,7 +366,7 @@ dev.copy2pdf(file="PreyConsumpt_Eq1.pdf", width=18, height=6)
 
 
 ingest_directpredict_plot_R <- ggplot(prey_predict_w_M, aes(M_kg, R)) +
-  geom_line(aes(color = str_wrap(`Reference(s)`, 75)), size = 1.15) +
+  geom_line(aes(color = Parameters), size = 1.15) +
   
   scale_x_log10(labels = scales::comma)+
   scale_y_log10(labels = scales::comma,
@@ -371,7 +377,7 @@ ingest_directpredict_plot_R <- ggplot(prey_predict_w_M, aes(M_kg, R)) +
   labs(title = "Daily Ration (R)",
        x = "Body mass (kg)",
        y = bquote('Prey consumed'~(kg~d^-1)), 
-       color = "Reference(s)") +
+       color = "Parameters") +
   theme_bw() +
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16),
@@ -382,7 +388,7 @@ ingest_directpredict_plot_R
 
 
 ingest_directpredict_plot_R120 <- ggplot(prey_predict_w_M, aes(M_kg, R_compressed_120days)) +
-  geom_line(aes(color = str_wrap(`Reference(s)`, 20)), size = 1.15) +
+  geom_line(aes(color = Parameters), size = 1.15) +
   
   scale_x_log10(labels = scales::comma)+
   scale_y_log10(labels = scales::comma,
@@ -393,7 +399,7 @@ ingest_directpredict_plot_R120 <- ggplot(prey_predict_w_M, aes(M_kg, R_compresse
   labs(title = "MDC - 120 days feeding",
        x = "Body mass (kg)",
        y = "",
-       color = "Reference(s)") +
+       color = "Parameters") +
   theme_bw() +
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16),
@@ -404,7 +410,7 @@ ingest_directpredict_plot_R120
 
 
 ingest_directpredict_plot_R90 <- ggplot(prey_predict_w_M, aes(M_kg, R_compressed_90days)) +
-  geom_line(aes(color = str_wrap(`Reference(s)`, 20)), size = 1.15) +
+  geom_line(aes(color = Parameters), size = 1.15) +
   
   scale_x_log10(labels = scales::comma)+
   scale_y_log10(labels = scales::comma,
@@ -415,7 +421,7 @@ ingest_directpredict_plot_R90 <- ggplot(prey_predict_w_M, aes(M_kg, R_compressed
   labs(title = "MDC - 90 days feeding",
        x = "Body mass (kg)",
        y = "",
-       color = "Reference(s)") +
+       color = "Parameters") +
   theme_bw() +
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16),
@@ -447,12 +453,12 @@ load("balaenid_sampled.RData")
 
 krill_daily_Ant_proj_forjoin <- krill_daily_Ant_projection %>% 
   filter(SpeciesCode %in% c("bw", "bp")) %>% 
-  mutate(prey_type = "Euphausia superba")
+  mutate(prey_type = "Antarctic krill")
 fish_daily <- fish_daily %>% 
   mutate(prey_type = "forage fish")
 krill_daily <- krill_daily %>% 
-  mutate(prey_type = case_when(region == "Polar" ~ "E. superba",
-                               region == "Temperate" ~ "non-E. superba krill"))
+  mutate(prey_type = case_when(region == "Polar" ~ "Antarctic krill",
+                               region == "Temperate" ~ "non-Antarctic krill"))
 
 balaenid_sampled <- balaenid_sampled %>% 
   mutate(Mass_est_kg = case_when(Species == "Balaena mysticetus" ~ 70000,
@@ -468,7 +474,9 @@ combined_en <- balaenid_sampled  %>%
     #select(krill_daily_Ant_proj_forjoin, prey_type, Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ)
   ) %>% 
   rename(`Lower best estimate` = Mass_specifc_energy_intake_best_low_kJ,
-         `Upper best estimate` = Mass_specifc_energy_intake_best_high_kJ) %>% 
+         `Upper best estimate` = Mass_specifc_energy_intake_best_high_kJ) 
+
+%>% 
   pivot_longer(`Lower best estimate`:`Upper best estimate`,
                names_to = "est_type", values_to = "Mass_specifc_energy_intake_kJ") %>% 
   mutate(est_type = fct_relevel(factor(est_type), "Low"))
@@ -477,7 +485,7 @@ combined_en <- balaenid_sampled  %>%
 MS_En_in <- ggplot(combined_en, 
               aes(fill = abbr_binom(Species))) +
   geom_boxplot(aes(x = abbr_binom(Species), 
-                   y = Mass_specifc_energy_intake_kJ),
+                   y = `Lower best estimate`),
                outlier.shape = NA) +
   facet_grid(.~prey_type, scales = "free") +
   geom_hline(yintercept = 80, linetype = "dashed") +
@@ -493,6 +501,6 @@ MS_En_in <- ggplot(combined_en,
                 breaks = c(50,100,250,500,1000,2500,5000))
 MS_En_in
 
-  #Save pdf of plot
+#Save pdf of plot
 dev.copy2pdf(file="Mass_specific_En_in.pdf", width=14, height=6)
  

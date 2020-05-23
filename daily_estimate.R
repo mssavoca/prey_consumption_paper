@@ -5,6 +5,9 @@ library(ggpubr)
 
 SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
+# color palette for figures
+pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. edeni" = "darkorchid3",  "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2")
+
 # Abbreviate a binomial e.g. Balaenoptera musculus -> B. musculus
 abbr_binom <- function(binom) {
   paste(str_sub(binom, 1, 1), 
@@ -267,7 +270,6 @@ pop_data <- read_excel("Filtration project_Whale population and feeding informat
   ))
 
 
-write.csv(x = pop)
 
 
 # data projected for Antarctic blue and fin whales
@@ -791,9 +793,9 @@ Engulfment_capacity
 
 dev.copy2pdf(file="Engulfment_capacity.pdf", width=14, height=6.5)
 
- ##Figure 2----
+##Figure 2----
 #summary tables of lunges, water filtered, and prey consumed per day 
-summ_stats_all <- fish_daily %>%    # toggle between fish and krill
+summ_stats_all <- krill_daily %>%    # toggle between fish and krill
   group_by(SpeciesCode, region) %>% 
   summarise(
     `Lunges per day` = median(daily_rate),
@@ -805,7 +807,7 @@ summ_stats_all <- fish_daily %>%    # toggle between fish and krill
   unite("Lunges per day IQR", c(Daily_rate_IQR25, Daily_rate_IQR75), sep = "-") %>% 
   unite("Water filtered per day IQR", c(Water_filtered_IQR25, Water_filtered_IQR75), sep = "-")
 
-summ_prey_stats <- fish_daily %>%  # toggle between fish and krill
+summ_prey_stats <- krill_daily %>%  # toggle between fish and krill
   #filter(!Region %in% c("North Atlantic", "Chile")) %>% 
   group_by(SpeciesCode, region) %>% 
   summarise(
@@ -823,7 +825,7 @@ summ_prey_stats <- fish_daily %>%  # toggle between fish and krill
   unite("Daily consumption Top 50% IQR", c(med_daily_consumpt_top50_IQR25, med_daily_consumpt_top50_IQR75), sep = "-")
 
 
-summ_EnDens <- fish_daily %>% 
+summ_EnDens <- krill_daily %>% 
   #filter(!Region %in% c("North Atlantic", "Chile")) %>% 
   group_by(SpeciesCode, region) %>% 
   # Daily energy intake in gigajoules (GJ)
@@ -851,13 +853,8 @@ Daily_rate_Antarctic <- krill_daily %>%
   filter(region == "Polar") %>%  
   ggplot(aes(x = fct_reorder(abbr_binom(Species), daily_rate), y = daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
   geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
-  coord_flip() + 
   scale_fill_manual(values = pal) +
-  #scale_y_continuous(breaks = seq(from = 0, to = 2500, by = 500)) +
-  # facet_grid(prey_general~., scales = "free", space = "free",         # freeing scales doesn't work with flat_violin plots
-  #            labeller = labeller(prey_general = names(c("Fish-feeding", "Krill-feeding")))) +  #Labeller not working
   labs(x = "Species",
        y = bquote('Estimated feeding rate'~(lunges~ind^-1~d^-1))) + 
   #ylim(0, 2000) +
