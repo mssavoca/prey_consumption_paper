@@ -178,18 +178,12 @@ All_rorqual_deployments <- dtag_lunges_long %>%
   filter(!ID %in% c("mn161107-36b", "mn161106-36b", "mn161105-36", "mn151103-7", "mn151103-4", "mn151103-3")) %>%   #includes DEC's CB 2016 whales
   filter(!ID %in% c("mn151031-3", "mn151031-4")) # Removes DEC's CB 2016 whales; ALL SA humpbacks taken out if left on
 
-All_rorqual_deployments2 <- All_rorqual_deployments %>%
-  filter(Phase == "Total") %>% 
-  col_summ(sum)
-  
-
-
 
 
 summ_table <- All_rorqual_deployments %>% filter(Phase == "Total") %>% 
   col_summ(sum)
 
-write.csv(summ_table, "All_rorqual_deployments.csv")
+#write.csv(summ_table, "All_rorqual_deployments.csv")
 
 
 
@@ -326,17 +320,7 @@ WAP_krill_data <- read_csv("AntarcticKrillData (1).csv") %>%
     Region = "Antarctic") %>% 
   rename(SpeciesCode = "Species")
 
-SA_krill_data <- read_csv("SouthAfricaKrillData (1).csv") %>% 
-  filter(!Species %in% c("bigBW", "bw", "bp", "bb")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
-  mutate(
-    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
-    Study_Area = "South Africa",
-    Region = "South Africa") %>% 
-  rename(SpeciesCode = "Species") 
-
-
-# combining ENP and SA prey data
+# combining ENP prey data
 ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
   #mutate(Study_Area2 = Study_Area) %>% 
   pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
@@ -349,20 +333,14 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
     BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
     BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
     Study_Area = NA
-    # 
-    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
-    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
-    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
-    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
-    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
-    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+
   ) %>% 
   select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
 
 
-All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data, SA_krill_data) 
+All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data) 
 
-All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data, SA_krill_data)
+All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data)
 
 # Whale population data---- 
 #Current data from IUCN 2019 Redlist, whaling data compiled in Rocha et al. 2014
@@ -517,7 +495,6 @@ krill_biomass_estimates <- krill_rate_estimates %>%
   left_join(All_krill_data_ENPcombined_noSA, by = c("SpeciesCode", "region"))
 
 
-#### write_csv(krill_biomass_estimates, "krill_biomass_estimates_for_editing.csv") # Use Dave's estimated gulp Antarctic gulp densities for E. superba 
 
 # quick look at species average rates; Assuming Sep 15, 12.5 hours of daylight
 krill_rate_estimates %>% 
@@ -604,7 +581,7 @@ load("daynights_krill_v2.RData") # THIS LOADS DATA WITHOUT SA, Chile, Azores, No
 krill_daily %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "bw", region == "Temperate") %>%
-  pull(daily_consumption_high_kg) %>%
+  pull(daily_consumption_low_kg) %>%
   summary()
 
 
@@ -719,9 +696,6 @@ summ_prey_stats <- fish_daily %>%  # toggle between fish and krill
   #filter(!Region %in% c("North Atlantic", "Chile")) %>% 
   group_by(SpeciesCode, region) %>% 
   summarise(
-    # med_daily_consumpt_hyp_low = round(median(prey_mass_per_day_hyp_low_kg), 2),
-    # med_daily_consumpt_hyp_low_IQR25 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.25, na.rm = TRUE), 2),
-    # med_daily_consumpt_hyp_low_IQR75 = round(quantile(prey_mass_per_day_hyp_low_kg, probs = 0.75, na.rm = TRUE), 2),
     med_daily_consumpt_best = round(median(daily_consumption_low_kg, na.rm = TRUE), 2),
     med_daily_consumpt_best_IQR25 = round(quantile(daily_consumption_low_kg, probs = 0.25, na.rm = TRUE), 2), 
     med_daily_consumpt_best_IQR75 = round(quantile(daily_consumption_low_kg, probs = 0.75, na.rm = TRUE), 2), 
@@ -738,9 +712,6 @@ summ_EnDens <- krill_daily %>%
   group_by(SpeciesCode, region) %>% 
   # Daily energy intake in gigajoules (GJ)
   summarise(
-    # med_daily_En_hyp_low = round(median(EnDens_hyp_low/1e6),2),
-    # med_daily_En_hyp_low_IQR25 = round(quantile(EnDens_hyp_low/1e6, probs = 0.25, na.rm = TRUE), 2),
-    # med_daily_En_hyp_low_IQR75 = round(quantile(EnDens_hyp_low/1e6, probs = 0.75, na.rm = TRUE), 2),
     med_daily_En_best = round(median(Total_energy_intake_best_low_kJ/1e6, na.rm = TRUE), 2),
     med_daily_En_best_IQR25 = round(quantile(Total_energy_intake_best_low_kJ/1e6, probs = 0.25, na.rm = TRUE), 2), 
     med_daily_En_best_IQR75 = round(quantile(Total_energy_intake_best_low_kJ/1e6, probs = 0.75, na.rm = TRUE), 2), 
@@ -767,7 +738,7 @@ Daily_rate_Antarctic <- krill_daily %>%
   coord_flip() + 
   scale_fill_manual(values = pal) +
   labs(x = "",
-       y = bquote(atop(,'Calculated feeding rate'~(lunges~ind^-1~d^-1)))) +
+       y = bquote('Calculated feeding rate'~(lunges~ind^-1~d^-1))) +
   #ylim(0, 2000) +
   scale_y_log10(labels = scales::comma, limits = c(75, 3000),
                 breaks = c(100,250,500,1000,2500)) +
@@ -816,12 +787,6 @@ Daily_biomass_ingested_Antarctic <- krill_daily %>%
   geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
   geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
   coord_flip() + 
-  
-  # best-upper, MOVED TO SUPPLEMENTAL
-  # geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
-  #                  fill = abbr_binom(Species)), 
-  #              position = position_nudge(x = -0.25, y = 0),
-  #              width = .4, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
   
   scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma, limits = c(50, 12000), 
@@ -912,12 +877,6 @@ Daily_biomass_ingested_nonAntarctic <- krill_daily %>%
   geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
   coord_flip() + 
   
-  # best-upper, MOVED TO SUPPLEMENTAL
-  # geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
-  #                  fill = abbr_binom(Species)), 
-  #              position = position_nudge(x = -0.25, y = 0),
-  #              width = .4, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
-  
   scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma, limits = c(100, 30000), 
                 breaks = c(0,250,500,1000,2500,5000,10000,15000,25000)) +
@@ -945,7 +904,7 @@ dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=20, height=5.5)
 
 
 
-# Extended Figure 2 FISH-FEEDERS, and hyp_low & TOP50 krill consumption ----
+# Extended Figure 2 FISH-FEEDERS & hyp_low and Targeted feeding krill consumption ----
 Daily_rate_fish <- fish_daily %>% 
 
   ggplot(aes(x = fct_relevel(abbr_binom(Species), "B. brydei"), y = daily_rate, 
@@ -1001,7 +960,7 @@ dev.copy2pdf(file="Daily_filtration_fish.pdf", width=9.5, height=4.75)
 Daily_biomass_ingested_fish <- fish_daily %>% 
   ggplot() +
   
-  # # Hyp_low, MOVED TO SUPPLEMENTAL
+  # #best-low *our best estimate*
   geom_flat_violin(aes(x = abbr_binom(Species), y = daily_consumption_low_kg,
         fill = abbr_binom(Species)), 
     position = position_nudge(x = 0.1, y = 0), alpha = 0.6) +
@@ -1266,7 +1225,6 @@ pal2 <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. bry
           "α = 1.66;  β = 0.559" = "palegreen3", "Barlow et al. 2008" = "blue")
 
 
-
 # preparing comparitive data (previous studies)
 days_feeding = rep(60:183, each = 5)
 
@@ -1492,12 +1450,6 @@ Annual_filtfeed <- krill_daily %>%
                                                                                     SpeciesCode == "bb" ~ .))
 
 
-
-pal2 <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. brydei" = "darkorchid3",  
-          "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2",
-          "α = 0.035;  β = 1" = "black", "α = 0.06;  β = 0.75" = "dark gray", "α = 0.1;  β = 0.8" = "dimgray", 
-          "α = 0.123;  β = 0.8" = "salmon2", "α = 0.17;  β = 0.773" = "skyblue3", "α = 0.42;  β = 0.67" = "thistle",
-          "α = 1.66;  β = 0.559" = "palegreen3", "Barlow et al. 2008" = "blue")
 
 
 # And now for the prey
@@ -2022,24 +1974,13 @@ Annual_ingestion_PopComb_Antarctic <- Annual_filtfeed_Ant_projection %>%
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
   
-  # geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
-  #           size = 1.5, linetype = "dashed") +
-  # geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
-  #           size = 1.5, linetype = "dashed") +
-  
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
                   x=days_feeding), 
               fill = "grey80", alpha = 0.5) +
-  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
-  #                 x=days_feeding), 
-  #             fill = "grey80", alpha = 0.5) +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
                   x=days_feeding), 
               fill = "grey80", alpha = 0.5) +
-  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
-  #                 x=days_feeding), 
-  #             fill = "grey80", alpha = 0.5) +
   
   geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
             size = 1.5) +
@@ -2176,20 +2117,10 @@ Fe_total_dw <- function(x) {
 
 # THIS one needed for numeric estimates
 Fe_total_dw <- function(x) {
-  (x*runif(length(x), 0.7, 0.9))*   # saying the amount of iron excreted ranges uniformly betweek 70-90% ingested, see Ratnarajah et al. 2016
-    0.25*
-    rnorm(length(x), 0.146, 0.135) # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
-} # average and sd of Fe conc in whale feces from: Ratnarajah et al. 2014  
-
-
-## THESE ARE NOT CORRECT ANYMORE
-# N_calc_kg <- function(x) {
-#   x*0.8*0.25*0.0056 # THINK ABOUT THE 0.25
-# } # see Roman et al. 2016, converted moles PON to g to kg
-# 
-# P_calc_kg <- function(x) {
-#   x*0.8*0.0089
-# } # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
+  (x*runif(length(x), 0.7, 0.9))*   # saying the amount of iron excreted ranges uniformly between 70-90% ingested, see Ratnarajah et al. 2016
+    0.25*           # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
+    rnorm(length(x), 0.146, 0.135) # average and sd of Fe conc in whale feces from: Ratnarajah et al. 2014  
+} 
 
 
 AntKrill_FeResRey <- function(x) {
@@ -2201,20 +2132,12 @@ AntKrill_FeResRey <- function(x) {
   
 }
 
-#mean(AntKrill_FeRes(509000000))
 
+
+# Fecal iron added to calculated carbon exported
 Fe_t_to_C_export_t <- function(x) {
-  x * 1e6 *             #convert tonnes to grams
-    0.01791 *           #convert grams iron to moles iron
-    5e4 * 12.0107 /     #convert to moles carbon exported (Lavery et al. 2010), convert back to grams carbon
-    1e6                 #convert to tonnes carbon
-}
-
-
-# USE THIS EQUATION
-Fe_t_to_C_export_t <- function(x) {
-  runif(length(x), 0.7, 0.9) *      #assumes 0.8 of feces stays in photic zone long enough to be utilized by phytoplankton;  # can change runif to 0.8 for graphing
-  (((((x * 1e6) *             #convert tonnes to grams
+  (((((x*runif(length(x), 0.8, 0.9) * #assumes 85% of feces stays in photic zone long enough to be utilized by phytoplankton;  # can change runif to 0.85 for graphing
+         1e6) *             #convert tonnes to grams
     0.017907) *           #convert grams iron to moles iron
     5e4) * 12.0107) /     #convert to moles carbon exported (Lavery et al. 2010), convert back to grams carbon
     1e6)              #convert to tonnes carbon exported
@@ -2222,18 +2145,6 @@ Fe_t_to_C_export_t <- function(x) {
 
 
 
-Fe_t_to_C_export_t <- function(x) {
-  runif(10000, 0.7, 0.9) *      #assumes 0.8 of feces stays in photic zone long enough to be utilized by phytoplankton;  # can change runif to 0.8 for graphing
-    (((x * 17907)*           #convert tonnes iron to moles iron
-         5e4) /           #convert to moles carbon exported (Lavery et al. 2010)
-       83259)        #convert to tonnes carbon exported
-}
-
-
-mean(Fe_t_to_C_export_t(10000))
-
-
-#Fe_t_to_C_export_t(16895.11*0.8)
 
 Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
   
@@ -2259,14 +2170,6 @@ Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
   mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
                    "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), 
             .funs = list(C_exported_Mt = ~Fe_t_to_C_export_t(.)/1e6))
-
-## estimated C respired is as simple as:
-# pre-whaling
-#quantile(runif(10000, 0.003, 0.006)*4760) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
-
-# post-whaling
-#quantile(runif(10000, 0.003, 0.006)*580) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
-
 
 
 
@@ -2360,7 +2263,6 @@ summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>%
 
 
 
-
 # Total Fe recycled by E. superba population
 133e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
   1.5917e-7 * # converting from 2.85 nmol iron recycled per day per krill in g
@@ -2435,14 +2337,7 @@ Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nu
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
 
-  # geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe_C_exported_Mt, color = Species), 
-  #           size = 1.5, linetype = "dashed") +
-  # geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe_C_exported_Mt, color = Species), 
-  #           size = 1.5, linetype = "dashed") +
 
-  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe_C_exported_Mt, ymax = IQR75_ingest_high_t_curr_Fe_C_exported_Mt, 
-  #                 x=days_feeding), 
-  #             fill = "grey70", alpha = 0.5) +
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe_C_exported_Mt, ymax = IQR75_ingest_low_t_curr_Fe_C_exported_Mt, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
@@ -2450,9 +2345,7 @@ Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nu
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe_C_exported_Mt, ymax = IQR75_ingest_low_t_hist_Fe_C_exported_Mt, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe_C_exported_Mt, ymax = IQR75_ingest_high_t_hist_Fe_C_exported_Mt, 
-  #                 x=days_feeding), 
-  #             fill = "grey70", alpha = 0.5) +
+
   
   geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe_C_exported_Mt, color = Species), 
             size = 1.5) +
@@ -2464,8 +2357,6 @@ Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nu
   labs(x = "Days feeding",
        y = bquote(atop('Projected C exported',
                        ~(Mt~yr^-1)))) + 
-  # scale_y_log10(limits = c(0.01, 120),
-  #               breaks = c(0.01, 0.1, 1, 10, 100))+
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = function(x) sprintf("%g", x),
                 limits = c(0.025, 120),
@@ -2478,40 +2369,5 @@ Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nu
 Annual_ingestion_PopComb_Antarctic_C_export
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_C_export.pdf", width=14, height=8)
-
-
-
-
-
-
-
-## Old code below here ----
-
-
-
-SBNMS_humpbacks_JML <-  scan(text= "mn160617-25
-                             mn160619-25b
-                             mn160619-36
-                             mn160622-25
-                             mn160622-36
-                             mn170612-10b
-                             mn170612-30
-                             mn170612-40
-                             mn170613-40
-                             mn170615-30
-                             mn170615-40b
-                             mn180620-40
-                             mn180620-42
-                             mn180620-44
-                             mn180620-45
-                             mn180621-47
-                             mn180622-42
-                             mn180622-44
-                             mn180624-42
-                             mn180624-44
-                             mn180624-45
-                             mn180624-47a
-                             mn180624-47b
-                             mn180626-47", what="")
 
 
