@@ -1,4 +1,5 @@
-# ANALYSIS file for submission Savoca et al. ----
+# Analysis and Figure code for submission Savoca et al. ----
+## High-resolution foraging measurements reveal baleen whales as global climate engineers
 
 
 library(tidyverse)
@@ -29,15 +30,118 @@ col_summ <- function(tbl, f) {
   )
 }
 
-# stuff from Max to generate data ----
 
-load("rates_CATS_updated_5_19_20.RData") # CATS deployment summary
+# Raincloud GEOM_FLAT_VIOLIN plot code----
+### This script creates an R function to generate raincloud plots, then simulates
+### data for plots. If using for your own data, you only need lines 1-80.
+### It relies largely dddon code previously written by David Robinson
+### (https://gist.github.com/dgrtwo/eb7750e74997891d7c20)
+### and the package ggplot2 by Hadley Wickham
+
+# Check if required packages are installed  
+packages <- c("cowplot", "readr", "ggplot2", "dplyr", "lavaan", "smooth", "Hmisc")
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())))
+}
+
+# Load packages
+library(ggplot2)
+# Defining the geom_flat_violin (Raincloud) function ----
+# Note: the below code modifies the
+# existing github page by removing a parenthesis in line 50
+
+"%||%" <- function(a, b) {
+  if (!is.null(a)) a else b
+}
+
+geom_flat_violin <- function(mapping = NULL, data = NULL, stat = "ydensity",
+                             position = "dodge", trim = TRUE, scale = "area",
+                             show.legend = NA, inherit.aes = TRUE, ...) {
+  layer(
+    data = data,
+    mapping = mapping,
+    stat = stat,
+    geom = GeomFlatViolin,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(
+      trim = trim,
+      scale = scale,
+      ...
+    )
+  )
+}
+
+#' @rdname ggplot2-ggproto
+#' @format NULL
+#' @usage NULL
+#' @export
+GeomFlatViolin <-
+  ggproto("GeomFlatViolin", Geom,
+          setup_data = function(data, params) {
+            data$width <- data$width %||%
+              params$width %||% (resolution(data$x, FALSE) * 0.9)
+            
+            # ymin, ymax, xmin, and xmax define the bounding rectangle for each group
+            data %>%
+              group_by(group) %>%
+              mutate(
+                ymin = min(y),
+                ymax = max(y),
+                xmin = x,
+                xmax = x + width / 2
+              )
+          },
+          
+          draw_group = function(data, panel_scales, coord) {
+            # Find the points for the line to go all the way around
+            data <- transform(data,
+                              xminv = x,
+                              xmaxv = x + violinwidth * (xmax - x)
+            )
+            
+            # Make sure it's sorted properly to draw the outline
+            newdata <- rbind(
+              plyr::arrange(transform(data, x = xminv), y),
+              plyr::arrange(transform(data, x = xmaxv), -y)
+            )
+            
+            # Close the polygon: set first and last point the same
+            # Needed for coord_polar and such
+            newdata <- rbind(newdata, newdata[1, ])
+            
+            ggplot2:::ggname("geom_flat_violin", GeomPolygon$draw_panel(newdata, panel_scales, coord))
+          },
+          
+          draw_key = draw_key_polygon,
+          
+          default_aes = aes(
+            weight = 1, colour = "grey20", fill = "white", size = 0.5,
+            alpha = NA, linetype = "solid"
+          ),
+          
+          required_aes = c("x", "y")
+  )
+
+
+
+
+# Feeding rates from MFC ----
+
+load("rates_MFC_627.RData") # Updated CATS deployment summaries
 
 load("rates_MedTermTag.RData") # Medium-term deployment summary
 
 load("rates[1].RData") # DTAG deployment summary
 
-load("tag_guide4.RData")  #loads the tag guide 
+
+
+#Read in tag guide----
+tag_guide <- read_excel("TAG GUIDE_5.27.20.xlsx", skip = 2) %>%  # Skips first two rows
+  rename(Study_Area = `Study_Area     _`,
+         SpeciesCode = `Spec      _`,
+         whaleLength = `Drone  _`)  #loads the tag guide 
 
 
 dtag_lunges_long <- dtag_lunges_long %>% 
@@ -65,10 +169,28 @@ All_rorqual_deployments <- dtag_lunges_long %>%
          tag_type = replace_na(tag_type, "CATS"),
          SpeciesCode = substr(ID, 1, 2)) %>% 
   dplyr::select(-Hours) %>% 
-  bind_rows(medterm_lunges_long)
+  bind_rows(medterm_lunges_long) %>% 
+  left_join(
+    dplyr::select(tag_guide, ID, Study_Area, whaleLength), by = "ID") %>% 
+  mutate(whaleLength = parse_number(whaleLength)) %>%  
+  # manually remove deployments from Azores, Chile, and Norway
+  filter(!Study_Area %in% c("Chile", "Azores", "Norway")) %>%  
+  filter(!ID %in% c("mn161107-36b", "mn161106-36b", "mn161105-36", "mn151103-7", "mn151103-4", "mn151103-3")) %>%   #includes DEC's CB 2016 whales
+  filter(!ID %in% c("mn151031-3", "mn151031-4")) # Removes DEC's CB 2016 whales; ALL SA humpbacks taken out if left on
+
+All_rorqual_deployments2 <- All_rorqual_deployments %>%
+  filter(Phase == "Total") %>% 
+  col_summ(sum)
+  
+
+
+
 
 summ_table <- All_rorqual_deployments %>% filter(Phase == "Total") %>% 
   col_summ(sum)
+
+write.csv(summ_table, "All_rorqual_deployments.csv")
+
 
 
 # droned whales---
@@ -79,6 +201,7 @@ KC_nontagged_lengths <- read_xlsx("Whales_for_Savoca_untagged_fromKC.xlsx", skip
   mutate(SpeciesCode = case_when(Species == "Antarctic minke" ~ "bb",
                                  Species == "blue" ~ "bw",
                                  Species == "humpback" ~ "mn"))
+
 
 
 # bringing in whale length data from Paolo; using allometric equations from Shirel to convert to engulfment capacity
@@ -123,7 +246,11 @@ whale_lengths <- read.csv("whale_masses.csv") %>%
            SpeciesCode == "be" ~ "Balaenoptera brydei",
            SpeciesCode == "bs" ~ "Balaenoptera borealis")) 
 
-
+measured_length <- whale_lengths %>% 
+  group_by(SpeciesCode) %>% 
+  summarize(sample_size = n(),
+            avg_length = mean(length),
+            SE_lenth = SE(length))
 
 # Dave's KRILL data (from 11/21/19)----
 #natural log transformed, which is what we were donig in the prior iteration
@@ -287,13 +414,13 @@ combine_rates <- function(df, keys) {
   )
 }
 daynight_rates <- All_rorqual_deployments %>% 
-  left_join(select(tag_guide4, ID, study_area), by = "ID") %>% 
+  left_join(dplyr::select(tag_guide, ID), by = "ID") %>% 
   mutate(
     region = case_when(
-      study_area == "Antarctic" ~ "Polar",
+      Study_Area == "Antarctic" ~ "Polar",
       TRUE ~ "Temperate"
     )
-  )%>% 
+  ) %>% 
   group_by(ID, region, prey_general, SpeciesCode) %>% 
   group_modify(combine_rates) %>% 
   ungroup() %>% 
@@ -466,14 +593,18 @@ krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, aug1, 120)  %>
   )
 
 
-#save(krill_daily, file = "daynights_krill.RData")
-load("daynights_krill.RData")
+#save(krill_daily, file = "daynights_krill.RData") # THIS SAVES DATA WITH SA, Chile, ETC
+#load("daynights_krill.RData") # THIS LOADS DATA WITH SA, Chile, ETC
+
+save(krill_daily, file = "daynights_krill_v2.RData") # THIS SAVES DATA WITHOUT SA, Chile, Azores, Norway 
+load("daynights_krill_v2.RData") # THIS LOADS DATA WITHOUT SA, Chile, Azores, Norway 
+
 
 # check to see prey consumption rates 
 krill_daily %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "bw", region == "Temperate") %>%
-  pull(daily_consumption_hyp_low_kg) %>%
+  pull(daily_consumption_high_kg) %>%
   summary()
 
 
@@ -562,7 +693,7 @@ load("daynights_fish.RData")
 fish_daily %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "mn") %>%
-  pull(daily_consumption_high_kg) %>%
+  pull(daily_consumption_low_kg) %>%
   summary()
 
 
@@ -571,13 +702,14 @@ fish_daily %>%
 
 ##Figure 2----
 #summary tables of lunges, water filtered, and prey consumed per day 
-summ_stats_all <- fish_daily %>%    # toggle between fish and krill
+summ_stats_all <- krill_daily %>%    # toggle between fish and krill
   group_by(SpeciesCode, region) %>% 
   summarise(
     `Lunges per day` = median(daily_rate),
     Daily_rate_IQR25 = round(quantile(daily_rate, probs = 0.25, na.rm = TRUE), 2), 
     Daily_rate_IQR75 = round(quantile(daily_rate, probs = 0.75, na.rm = TRUE), 2),
-    `Water filtered per day` = median(Engulf_cap_m3*daily_rate),
+    `Water filtered per day` = mean(Engulf_cap_m3*daily_rate),
+    SE_filt = sd(Engulf_cap_m3*daily_rate)/sqrt(110),
     Water_filtered_IQR25 = round(quantile(Engulf_cap_m3*daily_rate, probs = 0.25, na.rm = TRUE), 2), 
     Water_filtered_IQR75 = round(quantile(Engulf_cap_m3*daily_rate, probs = 0.75, na.rm = TRUE), 2)) %>% 
   unite("Lunges per day IQR", c(Daily_rate_IQR25, Daily_rate_IQR75), sep = "-") %>% 
@@ -630,44 +762,47 @@ Daily_rate_Antarctic <- krill_daily %>%
            
   ggplot(aes(x = fct_relevel(abbr_binom(Species), "B. bonaerensis"), y = daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_boxplot(width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
   scale_fill_manual(values = pal) +
   labs(x = "",
-       y = bquote(atop('Estimated feeding rate',
-                  ~(lunges~ind^-1~d^-1)))) + 
+       y = bquote(atop(,'Calculated feeding rate'~(lunges~ind^-1~d^-1)))) +
   #ylim(0, 2000) +
-  scale_y_log10(labels = scales::comma, limits = c(50, 3000),
-                breaks = c(10,100,250,500,1000,2500)) +
+  scale_y_log10(labels = scales::comma, limits = c(75, 3000),
+                breaks = c(100,250,500,1000,2500)) +
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
 Daily_rate_Antarctic
 
-dev.copy2pdf(file="Daily_rate_Antarctic.pdf", width=5.5, height=5)
+dev.copy2pdf(file="Daily_rate_Antarctic.pdf", width=7.25, height=4)
 
 
 Daily_filtration_Antarctic <- krill_daily %>% 
   filter(region == "Polar") %>%   
   ggplot(aes(x = fct_reorder(abbr_binom(Species), Engulf_cap_m3*daily_rate), y = Engulf_cap_m3*daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_boxplot(width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
   scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma, 
-                limits = c(500,100000), 
-                breaks = c(500,1000,5000,10000,50000,100000)) +
+                limits = c(100,75000), 
+                breaks = c(100,500,1000,5000,10000,50000)) +
   #ylim(0,60000) +
   labs(x = "",
-       y = bquote(atop('Estimated water filtered',
-                  ~(m^3~ind^-1~d^-1)))) + 
+       y = bquote('Calculated water filtered'~(m^3~ind^-1~d^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
         
 Daily_filtration_Antarctic
 
-dev.copy2pdf(file="Daily_filtration_Antarctic.pdf", width=5.75, height=5)
+dev.copy2pdf(file="Daily_filtration_Antarctic.pdf", width=6, height=4)
 
 
 
@@ -675,14 +810,13 @@ Daily_biomass_ingested_Antarctic <- krill_daily %>%
   filter(region == "Polar") %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
   
-  ggplot() +
+  # #best-low *our conservative estimate*
+  ggplot(aes(x = Species, y = daily_consumption_low_kg,
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
   
-  # #best-low *our best estimate*
-  geom_boxplot(aes(x = Species, y = daily_consumption_low_kg/1000,
-                   fill = abbr_binom(Species)), 
-               #position = position_nudge(x = 0.25, y = 0),
-               width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
- 
   # best-upper, MOVED TO SUPPLEMENTAL
   # geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
   #                  fill = abbr_binom(Species)), 
@@ -690,29 +824,30 @@ Daily_biomass_ingested_Antarctic <- krill_daily %>%
   #              width = .4, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
   
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.05, 25), 
-                breaks = c(0,1,5,10,15,25)) +
-  labs(x = "Species",
-       y = bquote(atop('Estimated krill consumed',
-                  ~(tonnes~ind^-1~d^-1)))) +
-  #ylim(0,6) +
-  theme_classic(base_size = 20) +
-  theme(legend.position = "none",
-        axis.text.x = element_text(face = "italic"))
+  scale_y_log10(labels = scales::comma, limits = c(50, 12000), 
+                breaks = c(0,100,250,500,1000,2500,5000,10000)) +
+  labs(x = "",
+       y = bquote('Calculated krill consumed'~(kg~ind^-1~d^-1))) +
+   theme_classic(base_size = 20) +
+   theme(legend.position = "none",
+         axis.text.x = element_text(angle = 45, hjust = 1),
+         axis.text.y = element_blank(),
+         axis.ticks.y = element_blank())
         
 Daily_biomass_ingested_Antarctic
 
-dev.copy2pdf(file="Daily_biomass_ingested_Antarctic.pdf", width=5.75, height=5.5)
+dev.copy2pdf(file="Daily_biomass_ingested_Antarctic.pdf", width=6, height=4)
 
 
 Fig_2_Antarctic <- ggarrange(Daily_rate_Antarctic, Daily_filtration_Antarctic, Daily_biomass_ingested_Antarctic, 
-                             labels = c("A", "B", "C"), # THIS IS SO COOL!!
+                             labels = c("D", "E", "F"), 
                              font.label = list(size = 18),
+                             widths = c(1.26, 1, 1), heights = c(0.5, 2,2),
                              legend = "none",
-                             ncol = 1, nrow = 3)
+                             ncol = 3, nrow = 1)
 Fig_2_Antarctic
 
-dev.copy2pdf(file="Fig_2_Antarctic.pdf", width=8, height=18)
+dev.copy2pdf(file="Fig_2_Antarctic.pdf", width=20, height=6)
 
 
 
@@ -724,19 +859,21 @@ Daily_rate_nonAntarctic <- Daily_rate_Antarctic <- krill_daily %>%
   ggplot(aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"), 
              y = daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_boxplot(width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
   scale_fill_manual(values = pal) +
-  #ylim(0, 2000) +
-  scale_y_log10(labels = scales::comma, limits = c(50, 3000),
-                breaks = c(10,100,250,500,1000,2500)) +
+  labs(x = "",
+       y = "") +
+  scale_y_log10(labels = scales::comma, limits = c(25, 1500),
+                breaks = c(50,100,250,500,1000)) +
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
 Daily_rate_nonAntarctic
 
-dev.copy2pdf(file="Daily_rate_nonAntarctic.pdf", width=5.5, height=5)
+dev.copy2pdf(file="Daily_rate_nonAntarctic.pdf", width=7.25, height=4)
 
 
 Daily_filtration_nonAntarctic <- krill_daily %>% 
@@ -744,33 +881,36 @@ Daily_filtration_nonAntarctic <- krill_daily %>%
   ggplot(aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"), 
              y = Engulf_cap_m3*daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_boxplot(width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
   scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma, 
-                limits = c(500,100000), 
-                breaks = c(500,1000,5000,10000,50000,100000)) +
+                limits = c(250,75000), 
+                breaks = c(500,1000,5000,10000,50000)) +
+  labs(x = "",
+       y = "") + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
 Daily_filtration_nonAntarctic
 
-dev.copy2pdf(file="Daily_filtration_nonAntarctic.pdf", width=5.75, height=5)
+dev.copy2pdf(file="Daily_filtration_nonAntarctic.pdf", width=6, height=4)
 
 
 
 Daily_biomass_ingested_nonAntarctic <- krill_daily %>% 
   filter(region == "Temperate") %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus")) %>% 
   
-  ggplot() +
-  
-  # #best-low *our best estimate*
-  geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
-                   y = daily_consumption_low_kg/1000,
-                   fill = abbr_binom(Species)), 
-               #position = position_nudge(x = 0.25, y = 0),
-               width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  # #best-low *our conservative estimate*
+  ggplot(aes(x = Species, y = daily_consumption_low_kg,
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, guides = FALSE, outlier.shape = NA, alpha = 0.5) +
+  coord_flip() + 
   
   # best-upper, MOVED TO SUPPLEMENTAL
   # geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
@@ -779,26 +919,29 @@ Daily_biomass_ingested_nonAntarctic <- krill_daily %>%
   #              width = .4, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
   
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.05, 25), breaks = c(0,1,5,10,15,25)) +
-  labs(x = "Species") +
-  #ylim(0,6) +
+  scale_y_log10(labels = scales::comma, limits = c(100, 30000), 
+                breaks = c(0,250,500,1000,2500,5000,10000,15000,25000)) +
+  labs(x = "",
+       y = "") +
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_text(face = "italic"),
-        axis.title.y = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
 Daily_biomass_ingested_nonAntarctic
 
-dev.copy2pdf(file="Daily_biomass_ingested_nonAntarctic.pdf", width=5.75, height=5.5)
+dev.copy2pdf(file="Daily_biomass_ingested_nonAntarctic.pdf", width=6, height=4)
 
 
 Fig_2_nonAntarctic <- ggarrange(Daily_rate_nonAntarctic, Daily_filtration_nonAntarctic, Daily_biomass_ingested_nonAntarctic, 
-                                #labels = c("D", "E", "F"), # THIS IS SO COOL!!
+                                labels = c("A", "B", "C"), 
                                 font.label = list(size = 18),
+                                widths = c(1.26, 1, 1),
                                 legend = "none",
-                                ncol = 1, nrow = 3)
+                                ncol = 3, nrow = 1)
 Fig_2_nonAntarctic
 
-dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=12, height=18)
+dev.copy2pdf(file="Fig_2_nonAntarctic.pdf", width=20, height=5.5)
 
 
 
@@ -807,76 +950,95 @@ Daily_rate_fish <- fish_daily %>%
 
   ggplot(aes(x = fct_relevel(abbr_binom(Species), "B. brydei"), y = daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_boxplot(width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+ 
+  geom_boxplot(position = position_nudge(x = 0, y = 0),
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = 0.8) +
+  
   scale_fill_manual(values = pal) +
   labs(x = "",
-       y = bquote(atop('Estimated feeding rate',
-                       ~(lunges~ind^-1~d^-1)))) + 
-  #ylim(0, 2000) +
-  scale_y_log10(labels = scales::comma, limits = c(10, 800),
+       y = bquote('Estimated feeding rate'~(lunges~ind^-1~d^-1))) + 
+  coord_flip() +
+  scale_y_log10(labels = scales::comma, limits = c(5, 600),
                 breaks = c(10,50,100,500)) +
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
   
 Daily_rate_fish
 
-dev.copy2pdf(file="Daily_rate_fish.pdf", width=5.5, height=5)
+dev.copy2pdf(file="Daily_rate_fish.pdf", width=9.5, height=4.75)
 
 
 Daily_filtration_fish <- fish_daily %>% 
   filter(region == "Temperate") %>%   
   ggplot(aes(x = fct_reorder(abbr_binom(Species), Engulf_cap_m3*daily_rate), y = Engulf_cap_m3*daily_rate, 
              fill = abbr_binom(Species))) +
-  geom_boxplot(width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  geom_boxplot(position = position_nudge(x = 0, y = 0),
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  
+  geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = 0.8) +
+
   scale_fill_manual(values = pal) +
   scale_y_log10(labels = scales::comma, 
-                limits = c(100,50000), 
-                breaks = c(100,500,1000,5000,10000,50000)) +
-  #ylim(0,60000) +
+                limits = c(50,25000), 
+                breaks = c(100,500,1000,5000,10000,25000)) +
+  coord_flip() +
   labs(x = "",
-       y = bquote(atop('Estimated water filtered',
-                       ~(m^3~ind^-1~d^-1)))) + 
+       y = bquote('Estimated water filtered'~(m^3~ind^-1~d^-1))) + 
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank())
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
 Daily_filtration_fish
 
-dev.copy2pdf(file="Daily_filtration_fish.pdf", width=5.75, height=5)
+dev.copy2pdf(file="Daily_filtration_fish.pdf", width=9.5, height=4.75)
 
 
 
 Daily_biomass_ingested_fish <- fish_daily %>% 
   ggplot() +
   
+  # # Hyp_low, MOVED TO SUPPLEMENTAL
+  geom_flat_violin(aes(x = abbr_binom(Species), y = daily_consumption_low_kg,
+        fill = abbr_binom(Species)), 
+    position = position_nudge(x = 0.1, y = 0), alpha = 0.6) +
+  
   # #best-low *our best estimate*
-  geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_low_kg/1000,
+  geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_low_kg,
                    fill = abbr_binom(Species)), 
-               position = position_nudge(x = 0.25, y = 0),
-               width = .45, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+               position = position_nudge(x = -0.1, y = 0),
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  
   
   # best-upper, MOVED TO SUPPLEMENTAL
-  geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg/1000,
+  geom_boxplot(aes(x = abbr_binom(Species), y = daily_consumption_high_kg,
                    fill = abbr_binom(Species)),
                position = position_nudge(x = -0.25, y = 0),
-               width = .45, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
   
+# best-upper, MOVED TO SUPPLEMENTAL
+  geom_flat_violin(aes(x = abbr_binom(Species), y = daily_consumption_high_kg,
+        fill = abbr_binom(Species)),
+  position = position_nudge(x = 0.1, y = 0), alpha = 0.6) +
+
+  coord_flip() +
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.05, 20), 
-                breaks = c(0,1,5,10,15)) +
+  scale_y_log10(labels = scales::comma, limits = c(50, 25000), 
+                breaks = c(0,1000,2500,5000,10000,25000)) +
   labs(x = "Species",
-       y = bquote(atop('Estimated fish consumed',
-                       ~(tonnes~ind^-1~d^-1)))) +
-  #ylim(0,6) +
+       y = bquote('Estimated fish consumed'~(kg~ind^-1~d^-1))) +
+
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_text(face = "italic"))
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
 
 Daily_biomass_ingested_fish
 
-dev.copy2pdf(file="Daily_biomass_ingested_fish.pdf", width=5.75, height=5.5)
+dev.copy2pdf(file="Daily_biomass_ingested_fish.pdf", width=9.5, height=4.75)
 
 
 
@@ -885,35 +1047,44 @@ dev.copy2pdf(file="Daily_biomass_ingested_fish.pdf", width=5.75, height=5.5)
 Daily_biomass_ingested_nonAntarcticTOP50 <- krill_daily %>% 
   filter(region == "Temperate") %>% 
   
-  ggplot() +
+  ggplot(aes(fill = abbr_binom(Species))) +
   
-  # Hyp_low, MOVED TO SUPPLEMENTAL
+  # # Hyp_low, MOVED TO SUPPLEMENTAL
+  geom_flat_violin(
+    aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
+        y = daily_consumption_hyp_low_kg),
+    position = position_nudge(x = 0.1, y = 0), alpha = 0.4) +
   geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
-                   y = daily_consumption_hyp_low_kg/1000,
-                   fill = abbr_binom(Species)), 
-               position = position_nudge(x = 0.25, y = 0),
-               width = .45, guides = FALSE, outlier.shape = NA, alpha = 0.6) +
+                   y = daily_consumption_hyp_low_kg), 
+               position = position_nudge(x = -0.1, y = 0),
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.4) +
   
   # best-upper, MOVED TO SUPPLEMENTAL
+  geom_flat_violin(
+    aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
+        y = daily_consumption_high_kg),
+        position = position_nudge(x = 0.1, y = 0), alpha = 0.8) +
   geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
-                   y = daily_consumption_high_kg/1000,
-                   fill = abbr_binom(Species)), 
+                   y = daily_consumption_high_kg), 
                position = position_nudge(x = -0.25, y = 0),
-               width = .45, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+
   
-  
+  coord_flip() +
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.25, 50), 
-                breaks = c(1,2.5,5,10,25, 50)) +
-  labs(x = "Species",
-       y = bquote(atop('Estimated krill consumed',
-                       ~(tonnes~ind^-1~d^-1)))) +
+  scale_y_log10(labels = scales::comma, limits = c(100, 50000), 
+                breaks = c(500,1000,2500,5000,10000,25000, 50000)) +
+  labs(x = "",
+       y = bquote('Calculated krill consumed'~(kg~ind^-1~d^-1))) +
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_text(face = "italic"))
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
+
 Daily_biomass_ingested_nonAntarcticTOP50
 
-dev.copy2pdf(file="Daily_biomass_ingested_nonAntarcticTOP50.pdf", width=6.25, height=5.5)
+dev.copy2pdf(file="Daily_biomass_ingested_nonAntarcticTOP50.pdf", 
+             width=10, height=5.5)
 
 
 
@@ -923,29 +1094,26 @@ Daily_biomass_ingested_AntarcticTOP50 <- krill_daily %>%
   filter(region == "Polar") %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
   
-  ggplot() +
+  ggplot(aes(fill = abbr_binom(Species))) +
   
-  # #best-low *our best estimate*
-  geom_boxplot(aes(x = Species, y = daily_consumption_high_kg/1000,
-                   fill = abbr_binom(Species)), 
-               #position = position_nudge(x = 0.25, y = 0),
-               width = .5, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
-  
+  # best-upper, MOVED TO SUPPLEMENTAL
+  geom_flat_violin(aes(x = Species, y = daily_consumption_high_kg),
+    position = position_nudge(x = 0.1, y = 0), alpha = 0.8) +
+  geom_boxplot(aes(x = Species, y = daily_consumption_high_kg),
+               width = .15, guides = FALSE, outlier.shape = NA, alpha = 0.8) +
+  coord_flip() +
   scale_fill_manual(values = pal) +
-  scale_y_log10(labels = scales::comma, limits = c(0.05, 25), 
-                breaks = c(0,1,5,10,15,25)) +
-  labs(x = "Species",
-       y = bquote(atop('Estimated krill consumed',
-                       ~(tonnes~ind^-1~d^-1)))) +
-  #ylim(0,6) +
+  scale_y_log10(labels = scales::comma, limits = c(50, 12000), 
+                breaks = c(0,100,250,500,1000,2500,5000,10000)) +
+  labs(x = "",
+       y = bquote(atop('Calculated krill consumed'~(kg~ind^-1~d^-1)))) +
   theme_classic(base_size = 20) +
   theme(legend.position = "none",
-        axis.text.x = element_text(face = "italic"))
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(face = "italic", size = 20.5))
 Daily_biomass_ingested_AntarcticTOP50
 
-dev.copy2pdf(file="Daily_biomass_ingested_AntarcticTOP50.pdf", width=6, height=5.5)
-
-
+dev.copy2pdf(file="Daily_biomass_ingested_AntarcticTOP50.pdf", width=9.5, height=4.75)
 
 
 
@@ -955,10 +1123,10 @@ krill_yearly_ind <- krill_daily %>%
          filtration90 = Engulf_cap_m3*daily_rate*90,
          filtration120 = Engulf_cap_m3*daily_rate*120,
          filtration182.5 = Engulf_cap_m3*daily_rate*182.5,
-         prey60 = daily_biomass_kg_best_high*60,
-         prey90 = daily_biomass_kg_best_high*90,
-         prey120 = daily_biomass_kg_best_high*120,
-         prey182.5 = daily_biomass_kg_best_high*182.5)
+         prey60 = daily_consumption_low_kg*60,
+         prey90 = daily_consumption_low_kg*90,
+         prey120 = daily_consumption_low_kg*120,
+         prey182.5 = daily_consumption_low_kg*182.5)
 
 # Annual individual filtration, summary table
 summ_filt_annual_ind_stats <- krill_yearly_ind %>%
@@ -1091,6 +1259,14 @@ summ_filt_annual_pop_stats_hist <- krill_yearly_pop %>%
 
 # Figure 3----
 
+pal2 <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. brydei" = "darkorchid3",  
+          "M. novaeangliae" = "gray30", "B. physalus" = "chocolate3", "B. musculus" = "dodgerblue2",
+          "α = 0.035;  β = 1" = "black", "α = 0.06;  β = 0.75" = "dark gray", "α = 0.1;  β = 0.8" = "dimgray", 
+          "α = 0.123;  β = 0.8" = "salmon2", "α = 0.17;  β = 0.773" = "skyblue3", "α = 0.42;  β = 0.67" = "thistle",
+          "α = 1.66;  β = 0.559" = "palegreen3", "Barlow et al. 2008" = "blue")
+
+
+
 # preparing comparitive data (previous studies)
 days_feeding = rep(60:183, each = 5)
 
@@ -1138,6 +1314,14 @@ whale_prey_yr_Eq1 <- BMRtoFMRprojection %>%
   mutate(MDC = 0.83* R * 365 / days_feeding,
          MYC_t = MDC * days_feeding/1000)
 
+whale_prey_yr_Eq1_summ <- whale_prey_yr_Eq1 %>% 
+  group_by(Species) %>% 
+  filter(beta == 2:3) %>% 
+  summarise(avg_yr_cons = mean(MYC_t),
+            SE_yr_cons = SE(MYC_t)) %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), 
+                        "B. bonaerensis", "B. physalus", "M. novaeangliae", "B. musculus"))
+
          
 
 
@@ -1147,7 +1331,13 @@ whale_prey_yr_Eq2 <- whale_mass %>%
   mutate(
     Species = abbr_binom(Species),
     MDC = 0.83 * (`Intercept (α)`*med_wt_kg^`Exponent (β)`)*365 / days_feeding,   # MDC consumption assuming that many days spent intensively feeding; actually decreases with increasing # of days_feeding because the yearly R is fixed
-    MYC_t = MDC * days_feeding/1000)  
+    MYC_t = MDC * days_feeding/1000) 
+
+
+whale_prey_yr_Eq2_summ <- whale_prey_yr_Eq2 %>% 
+  group_by(Species, Parameters) %>% 
+  summarise(avg_yr_cons = mean(MYC_t),
+            SE_yr_cons = SE(MYC_t))
   
 
 whale_prey_yr_prev <- whale_prey_yr_Eq2 %>% 
@@ -1160,6 +1350,93 @@ whale_prey_yr_prev <- whale_prey_yr_Eq2 %>%
          Species = fct_relevel(factor(abbr_binom(Species)), 
                                "B. bonaerensis", "B. physalus", "M. novaeangliae", "B. musculus")) 
   
+
+whale_prey_yr_prev_summ <- whale_prey_yr_Eq2_summ %>% 
+  bind_rows(whale_prey_yr_Eq1_summ) %>% 
+  mutate(Parameters = ifelse(is.na(Parameters), "Barlow et al. 2008", Parameters)) 
+
+# Species plots of previous estimates
+prey_yr_prev_summ_bb_plot <- whale_prey_yr_prev_summ %>% 
+  filter(Species == "B. bonaerensis") %>% 
+  ggplot() +
+  geom_pointrange(aes(x=fct_reorder(Parameters, avg_yr_cons), y=avg_yr_cons, 
+                      ymin=(avg_yr_cons-SE_yr_cons), ymax=(avg_yr_cons+SE_yr_cons),
+                      color = Parameters),
+                  size=0.75) +
+  scale_colour_manual(values = pal2) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 1000),
+                breaks = c(30,100,300,600)) +
+  xlab(" \n") +
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank())
+prey_yr_prev_summ_bb_plot
+
+prey_yr_prev_summ_mn_plot <- whale_prey_yr_prev_summ %>% 
+  filter(Species == "M. novaeangliae") %>% 
+  ggplot() +
+  geom_pointrange(aes(x=fct_reorder(Parameters, avg_yr_cons), y=avg_yr_cons, 
+                      ymin=(avg_yr_cons-SE_yr_cons), ymax=(avg_yr_cons+SE_yr_cons),
+                      color = Parameters),
+                  size=0.75) +
+  scale_colour_manual(values = pal2) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 1000),
+                breaks = c(30,100,300,600)) +
+  xlab(" \n") +
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank())
+prey_yr_prev_summ_mn_plot
+
+prey_yr_prev_summ_bp_plot <- whale_prey_yr_prev_summ %>% 
+  filter(Species == "B. physalus") %>% 
+  ggplot() +
+  geom_pointrange(aes(x=fct_reorder(Parameters, avg_yr_cons), y=avg_yr_cons, 
+                      ymin=(avg_yr_cons-SE_yr_cons), ymax=(avg_yr_cons+SE_yr_cons),
+                      color = Parameters),
+                  size=0.75) +
+  scale_colour_manual(values = pal2) +
+  scale_y_log10(labels = scales::comma, limits = c(20, 3500),
+                breaks = c(30,100,300,600,1500,3000)) +
+  xlab(" \n") +
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank())
+prey_yr_prev_summ_bp_plot
+
+
+prey_yr_prev_summ_bw_plot <- whale_prey_yr_prev_summ %>% 
+  filter(Species == "B. musculus") %>% 
+  ggplot() +
+  geom_pointrange(aes(x=fct_reorder(Parameters, avg_yr_cons), y=avg_yr_cons, 
+                      ymin=(avg_yr_cons-SE_yr_cons), ymax=(avg_yr_cons+SE_yr_cons),
+                      color = Parameters),
+                  size=0.75) +
+  scale_colour_manual(values = pal2) +
+  scale_y_log10(labels = scales::comma, limits = c(20, 3500),
+                breaks = c(30,100,300,600,1500,3000)) +
+  xlab(" \n") +
+  theme_classic(base_size = 20) +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank())
+prey_yr_prev_summ_bw_plot
+
 
 
 days_feeding = rep(60:183, each = 5)
@@ -1223,105 +1500,169 @@ pal2 <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. bry
           "α = 1.66;  β = 0.559" = "palegreen3", "Barlow et al. 2008" = "blue")
 
 
-# scale_colour_manual(values = c("black", "dark gray", "dimgray", "salmon2", 
-#                                "slategray1", "thistle", "palegreen3", "skyblue3")) +
-
-
 # And now for the prey
 # YEARLY INDIVIDUAL PREY, ANTARCTIC
-Annual_ingestion_ind_Antarctic <- Annual_filtfeed %>% 
-  filter(region == "Polar") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis")) %>% 
+Annual_ingestion_ind_Antarctic_bb <- Annual_filtfeed %>% 
+  filter(region == "Polar", abbr_binom(Species) == "B. bonaerensis") %>% 
   ggplot() +
-  
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_yr, ymax = IQR75_ingest_high_t_yr,
-                  x=days_feeding),
-              fill = "grey80", alpha = 0.5) +
-
-  geom_line(aes(days_feeding, med_ingest_high_t_yr, color = Species),
-            size = 1.5, linetype = "dashed") +
-
-  #Eq. 2 estimates
-  geom_line(data = filter(whale_prey_yr_prev,
-                          Species %in% c("B. bonaerensis", "M. novaeangliae")),
-            aes(x = days_feeding, y = MYC_t, 
-                color = Parameters),
-            linetype = "dotted", 
-            size = 1.25) +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_yr, ymax = IQR75_ingest_low_t_yr,
                   x=days_feeding),
               fill = "grey80", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = Species),
+  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = abbr_binom(Species)),
             size = 1.5) +
   
   scale_colour_manual(values = pal2) +
-  facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote(atop('Projected krill consumption',
+       y = bquote(atop('Projected krill consumed',
                        ~(tonnes~ind^-1~yr^-1)))) + 
+  scale_y_log10(labels = scales::comma, limits = c(10, 1000),
+                breaks = c(30,100,300,600)) +
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(10, 1500),
-                breaks = c(30,100,300,600,1000)) +
-  theme_minimal(base_size = 40) +
+  theme_classic(base_size = 35) +
   theme(strip.text = element_text(face = "italic"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
         legend.position = "none")
-Annual_ingestion_ind_Antarctic
+Annual_ingestion_ind_Antarctic_bb
 
-dev.copy2pdf(file="Annual_ingestion_ind_Antarctic.pdf", width=14, height=8)
-
-
+dev.copy2pdf(file="Annual_ingestion_ind_Antarctic_bb.pdf", width=14, height=8)
 
 
+
+Annual_ingestion_ind_Antarctic_mn <- Annual_filtfeed %>% 
+  filter(region == "Polar", abbr_binom(Species) == "M. novaeangliae") %>% 
+  ggplot() +
   
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_yr, ymax = IQR75_ingest_low_t_yr,
+                  x=days_feeding),
+              fill = "grey80", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = abbr_binom(Species)),
+            size = 1.5) +
   
+  scale_colour_manual(values = pal2) +
+  labs(x = "Days feeding") + 
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 1000),
+                breaks = c(30,100,300,600)) +
+  theme_classic(base_size = 35) +
+  theme(strip.text = element_text(face = "italic"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none")
+Annual_ingestion_ind_Antarctic_mn
+
+
+Fig_3_Antarctic <- ggarrange(Annual_ingestion_ind_Antarctic_bb, prey_yr_prev_summ_bb_plot,
+                             Annual_ingestion_ind_Antarctic_mn, prey_yr_prev_summ_mn_plot, 
+                                labels = c("D","","E",""), 
+                                font.label = list(size = 24),
+                                widths = c(3.25, 1, 3.25, 1),
+                                legend = "none",
+                                ncol = 4, nrow = 1)
+Fig_3_Antarctic
+  
+dev.copy2pdf(file="Fig_3_Antarctic.pdf", width=20, height=6)
+
+
+
+
 
 # YEARLY INDIVIDUAL PREY, NON-ANTARCTIC
-Annual_ingestion_ind_nonAntarctic <- Annual_filtfeed %>% 
-  filter(region == "Temperate") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. physalus", "M. novaeangliae")) %>% 
+Annual_ingestion_ind_nonAntarctic_mn <- Annual_filtfeed %>% 
+  filter(region == "Temperate", abbr_binom(Species) == "M. novaeangliae") %>% 
   ggplot() +
-  
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_yr, ymax = IQR75_ingest_high_t_yr,
-                  x=days_feeding),
-              fill = "grey80", alpha = 0.5) +
-  
-  geom_line(aes(days_feeding, med_ingest_high_t_yr, color = Species),
-            size = 1.5, linetype = "dashed") +
-  
-  geom_line(data = filter(whale_prey_yr_prev,
-                          Species %in% c("B. physalus", "B. musculus", "M. novaeangliae")),
-            aes(x = days_feeding, y = MYC_t, 
-                color = Parameters),
-            linetype = "dotted", 
-            size = 1.25) +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_yr, ymax = IQR75_ingest_low_t_yr,
                   x=days_feeding),
               fill = "grey80", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = Species),
+  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = abbr_binom(Species)),
             size = 1.5) +
-
+  
   scale_colour_manual(values = pal2) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(20, 3500),
                 breaks = c(30,100,300,600,1500,3000)) +
-  theme_minimal(base_size = 36) +
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  theme_classic(base_size = 35) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none",
-        axis.title = element_blank())
-Annual_ingestion_ind_nonAntarctic
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none")
+Annual_ingestion_ind_nonAntarctic_mn
 
-dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic.pdf", width=14, height=7)
+dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic_mn.pdf", width=14, height=7)
    
+
+Annual_ingestion_ind_nonAntarctic_bp <- Annual_filtfeed %>% 
+  filter(region == "Temperate", abbr_binom(Species) == "B. physalus") %>% 
+  ggplot() +
+  
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_yr, ymax = IQR75_ingest_low_t_yr,
+                  x=days_feeding),
+              fill = "grey80", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = abbr_binom(Species)),
+            size = 1.5) +
+  
+  scale_colour_manual(values = pal2) +
+  scale_y_log10(labels = scales::comma, limits = c(20, 3500),
+                breaks = c(30,100,300,600,1500,3000)) +
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  theme_classic(base_size = 35) +
+  theme(strip.text = element_text(face = "italic"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none")
+Annual_ingestion_ind_nonAntarctic_bp
+
+dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic_bp.pdf", width=14, height=7)
+
+
+
+Annual_ingestion_ind_nonAntarctic_bw <- Annual_filtfeed %>% 
+  filter(region == "Temperate", abbr_binom(Species) == "B. musculus") %>% 
+  ggplot() +
+  
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_yr, ymax = IQR75_ingest_low_t_yr,
+                  x=days_feeding),
+              fill = "grey80", alpha = 0.5) +
+  geom_line(aes(days_feeding, med_ingest_low_t_yr, color = abbr_binom(Species)),
+            size = 1.5) +
+  
+  scale_colour_manual(values = pal2) +
+  scale_y_log10(labels = scales::comma, limits = c(20, 3500),
+                breaks = c(30,100,300,600,1500,3000)) +
+  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
+  theme_classic(base_size = 35) +
+  theme(strip.text = element_text(face = "italic"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none")
+Annual_ingestion_ind_nonAntarctic_bw
+
+dev.copy2pdf(file="Annual_ingestion_ind_nonAntarctic_bw.pdf", width=14, height=7)
+
+
+
+Fig_3_nonAntarctic <- ggarrange(Annual_ingestion_ind_nonAntarctic_mn, prey_yr_prev_summ_mn_plot,
+                                Annual_ingestion_ind_nonAntarctic_bp, prey_yr_prev_summ_bp_plot,
+                                Annual_ingestion_ind_nonAntarctic_bw, prey_yr_prev_summ_bw_plot,
+                             labels = c("A","","B","","C",""), 
+                             font.label = list(size = 28),
+                             widths = c(3, 1, 3, 1, 3, 1),
+                             legend = "none",
+                             ncol = 6, nrow = 1)
+Fig_3_nonAntarctic
+
+dev.copy2pdf(file="Fig_3_nonAntarctic.pdf", width=28, height=6)
+
+
 
 
 # Figure 4----
-# YEARLY POPULATION FILTRATION, NON-ANTARCTIC
+# YEARLY POPULATION FILTRATION, NON-ANTARCTIC; NOW Figure 4 Extended
 Annual_filtration_Pop_nonAntarctic <- Annual_filtfeed %>% 
   filter(region == "Temperate") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)),  "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
   geom_ribbon(aes(ymin = IQR25_filt_curr/1e9, ymax = IQR75_filt_curr/1e9, 
                   x=days_feeding), 
@@ -1336,13 +1677,15 @@ Annual_filtration_Pop_nonAntarctic <- Annual_filtfeed %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Projected water filtered'~(km^3~yr^-1))) + 
+       y = bquote(atop('Projected water filtered',
+                       ~(km^3~yr^-1)))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(1, 2500),
-                breaks = c(1,5,10,25,100,250,1000,2500)) +
-  theme_minimal(base_size = 24) +
+  scale_y_log10(labels = scales::comma, limits = c(1, 500),
+                breaks = c(1,5,10,25,100,250)) +
+  theme_minimal(base_size = 32) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
+        legend.position = "none",
+        axis.text.x = element_text(size = 20))
 Annual_filtration_Pop_nonAntarctic
 
 dev.copy2pdf(file="Annual_filtration_Pop_nonAntarctic.pdf",  width=14, height=8)
@@ -1355,71 +1698,18 @@ Total_filtered <- Annual_filtfeed %>%
             sp_annual_avg_hist = med_filt_hist/1e9)
 
 
-# Northern Hemisphere prey, current
-Annual_ingestion_PopCurr_nonAntarctic <- Annual_filtfeed %>% 
-  filter(region == "Temperate") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
-  ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
-            size = 1.5) +
-  scale_colour_manual(values = pal) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  labs(x = "Days feeding",
-       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(limits = c(1.5, 100),
-                breaks = c(5, 10, 25, 50, 75)) +
-  theme_minimal(base_size = 24) +
-  theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
-Annual_ingestion_PopCurr_nonAntarctic
-
-dev.copy2pdf(file="Annual_ingestion_PopCurr_nonAntarctic.pdf", width=14, height=8)
-
-
-# Northern Hemisphere prey, historic
-Annual_ingestion_PopHist_nonAntarctic <- Annual_filtfeed %>% 
-  filter(region == "Temperate") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
-  ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
-            size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  scale_colour_manual(values = pal) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  labs(x = "Days feeding",
-       y = bquote('Projected prey consumption'~(Mt~yr^-1))) +  
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(limits = c(1.5, 175),
-                breaks = c(5, 10, 25, 50, 100)) +
-  theme_minimal(base_size = 24) +
-  theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
-Annual_ingestion_PopHist_nonAntarctic
-
-dev.copy2pdf(file="Annual_ingestion_PopHist_nonAntarctic.pdf", width=14, height=9)
-
 
 # Northern Hemisphere prey, COMBINED
 Annual_ingestion_PopComb_nonAntarctic <- Annual_filtfeed %>% 
   filter(region == "Temperate") %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. musculus", "M. novaeangliae")) %>% 
+  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
+  
+  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+            size = 1.5, linetype = "dashed") +
+  
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
@@ -1435,25 +1725,25 @@ Annual_ingestion_PopComb_nonAntarctic <- Annual_filtfeed %>%
               fill = "grey70", alpha = 0.5) +
   geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
             size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
+
   
   
   geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
             size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
+
   
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
+       y = bquote(atop('Projected krill consumed',
+                       ~(Mt~yr^-1)))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(0.5, 200),
                 breaks = c(1, 5, 10, 50, 100, 200)) +
-  theme_minimal(base_size = 24) +
+  theme_minimal(base_size = 32) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
+        legend.position = "none",
+        axis.text.x = element_text(size = 20))
 Annual_ingestion_PopComb_nonAntarctic
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_nonAntarctic.pdf", width=14, height=8)
@@ -1462,6 +1752,8 @@ dev.copy2pdf(file="Annual_ingestion_PopComb_nonAntarctic.pdf", width=14, height=
 # Southern Hemisphere calculations (Figure 4)----
 
 krill_Ant_projection <- read_csv("krill_biomass_estimates_for_editing.csv")
+
+load("daynights_AntProj.RData")
 
 
 latitudes <- tribble(
@@ -1710,76 +2002,19 @@ Annual_filtration_Pop_Antarctic <- Annual_filtfeed_Ant_projection %>%
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Projected water filtered'~(km^3~yr^-1))) + 
+       y = bquote(atop('Projected water filtered',
+                       ~(km^3~yr^-1)))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(0.1, 2500),
+  scale_y_log10(labels = scales::comma, limits = c(0.5, 2500),
                 breaks = c(1,5,10,25,100,250,1000,2500)) +
-  theme_minimal(base_size = 30) +
+  theme_minimal(base_size = 32) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
+        legend.position = "none",
+        axis.text.x = element_text(size = 20)
+        )
 Annual_filtration_Pop_Antarctic
 
 dev.copy2pdf(file="Annual_filtration_Pop_Antarctic.pdf", width=14, height=8)
-
-
-# Southern Hemisphere prey, current
-Annual_ingestion_PopCurr_Antarctic <- Annual_filtfeed_Ant_projection %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
-  ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
-            size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  scale_colour_manual(values = pal) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  labs(x = "Days feeding",
-       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
-                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
-  theme_minimal(base_size = 24) +
-  theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
-Annual_ingestion_PopCurr_Antarctic
-
-dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic.pdf", width=14, height=9)
-
-
-
-# Southern Hemisphere prey, historic
-Annual_ingestion_PopHist_Antarctic <- Annual_filtfeed_Ant_projection %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
-  ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
-            size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  scale_colour_manual(values = pal) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  labs(x = "Days feeding",
-       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
-                breaks = c(1, 5, 10, 50, 100, 200, 400)) +
-  theme_minimal(base_size = 24) +
-  theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
-Annual_ingestion_PopHist_Antarctic
-
-dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic.pdf", width=14, height=8)
-
 
 
 # Southern Hemisphere prey, COMBINED
@@ -1787,42 +2022,43 @@ Annual_ingestion_PopComb_Antarctic <- Annual_filtfeed_Ant_projection %>%
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
   
-  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
+  # geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+  #           size = 1.5, linetype = "dashed") +
+  # geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+  #           size = 1.5, linetype = "dashed") +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
                   x=days_feeding), 
               fill = "grey80", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
-                  x=days_feeding), 
-              fill = "grey80", alpha = 0.5) +
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+  #                 x=days_feeding), 
+  #             fill = "grey80", alpha = 0.5) +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
                   x=days_feeding), 
               fill = "grey80", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
-                  x=days_feeding), 
-              fill = "grey80", alpha = 0.5) +
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
+  #                 x=days_feeding), 
+  #             fill = "grey80", alpha = 0.5) +
+  
   geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
             size = 1.5) +
-
-  
-  
   geom_line(aes(days_feeding, med_ingest_low_t_hist/1e6, color = Species), 
             size = 1.5) +
 
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Projected prey consumption'~(Mt~yr^-1))) + 
+       y = bquote(atop('Projected krill consumed',
+                       ~(Mt~yr^-1)))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(0.1, 400),
                 breaks = c(1, 5, 10, 50, 100, 200, 400)) +
-  theme_minimal(base_size = 24) +
+  theme_minimal(base_size = 32) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
+        legend.position = "none",
+        axis.text.x = element_text(size = 20)
+        )
 Annual_ingestion_PopComb_Antarctic
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic.pdf", width=14, height=8)
@@ -1834,24 +2070,24 @@ summ_SO_krill_surplus <- Annual_filtfeed_Ant_projection %>%
   group_by(SpeciesCode) %>% 
   summarise(
     
-    Med_low_curr = median(med_ingest_low_t_curr, na.rm = TRUE),
-    IQR25_low_t_curr = round(quantile(IQR25_ingest_low_t_curr, probs = 0.25, na.rm = TRUE), 4),
-    IQR75_low_t_curr = round(quantile(IQR75_ingest_low_t_curr, probs = 0.25, na.rm = TRUE), 4),
+    Med_low_curr = median(med_ingest_low_t_curr/1e6, na.rm = TRUE),
+    IQR25_low_Mt_curr = round(quantile(IQR25_ingest_low_t_curr/1e6, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_low_Mt_curr = round(quantile(IQR75_ingest_low_t_curr/1e6, probs = 0.25, na.rm = TRUE), 4),
     
-    Med_high_curr = median(med_ingest_high_t_curr, na.rm = TRUE),
-    IQR25_high_t_curr = round(quantile(IQR25_ingest_high_t_curr, probs = 0.25, na.rm = TRUE), 4),
-    IQR75_high_t_curr = round(quantile(IQR75_ingest_high_t_curr, probs = 0.25, na.rm = TRUE), 4),
+    Med_high_curr = median(med_ingest_high_t_curr/1e6, na.rm = TRUE),
+    IQR25_high_Mt_curr = round(quantile(IQR25_ingest_high_t_curr/1e6, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_high_Mt_curr = round(quantile(IQR75_ingest_high_t_curr/1e6, probs = 0.25, na.rm = TRUE), 4),
     
-    Med_low_hist = median(med_ingest_low_t_hist, na.rm = TRUE),
-    IQR25_low_t_hist = round(quantile(IQR25_ingest_low_t_hist, probs = 0.25, na.rm = TRUE), 4),
-    IQR75_low_t_hist = round(quantile(IQR75_ingest_low_t_hist, probs = 0.25, na.rm = TRUE), 4),
+    Med_low_hist = median(med_ingest_low_t_hist/1e6, na.rm = TRUE),
+    IQR25_low_Mt_hist = round(quantile(IQR25_ingest_low_t_hist/1e6, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_low_Mt_hist = round(quantile(IQR75_ingest_low_t_hist/1e6, probs = 0.25, na.rm = TRUE), 4),
     
-    Med_high_hist = median(med_ingest_high_t_hist, na.rm = TRUE),
-    IQR25_high_t_hist = round(quantile(IQR25_ingest_high_t_hist, probs = 0.25, na.rm = TRUE), 4),
-    IQR75_high_t_hist = round(quantile(IQR75_ingest_high_t_hist, probs = 0.25, na.rm = TRUE), 4)
+    Med_high_hist = median(med_ingest_high_t_hist/1e6, na.rm = TRUE),
+    IQR25_high_Mt_hist = round(quantile(IQR25_ingest_high_t_hist/1e6, probs = 0.25, na.rm = TRUE), 4),
+    IQR75_high_Mt_hist = round(quantile(IQR75_ingest_high_t_hist/1e6, probs = 0.25, na.rm = TRUE), 4)
     
   ) %>% 
-  col_summ()
+  col_summ(sum)
 
 
 
@@ -1875,11 +2111,55 @@ sum(summ_SO_krill_surplus$IQR25_high_t_hist)-sum(summ_SO_krill_surplus$IQR75_hig
 sum(summ_SO_krill_surplus$Med_high_hist)-sum(summ_SO_krill_surplus$Med_high_curr)
 
 
+# PPR calculations ----
+######################################################################################
+# Estimating amount of primary production required to sustain global whale populations
+######################################################################################
+
+PPR_data <- Annual_filtfeed_Ant_projection %>% 
+  group_by(Species) %>% 
+  summarise(
+    PPR_required_curr_low = median(med_ingest_low_t_curr*0.1111*((1/0.1)^(2.2-1))),
+            PPR_required_hist = median(med_ingest_low_t_hist*0.1111*((1/0.1)^(2.2-1)))) %>% 
+  ungroup %>% 
+col_summ(sum)
+
+
+# Annual Southern Ocean NPP 1825 Mt per yr (1997-2013). From Arrigo 2014
+
+
+
+#prepare data for krill PPR in the CCE
+PPR_data <- prey_master_varying_DperYr %>% 
+  mutate(CCE_population = case_when(Species == "Balaenoptera musculus" ~ 1647,
+                                    Species == "Balaenoptera physalus" ~ 9029,
+                                    Species == "Megaptera novaeangliae" ~ 1918),
+         PPR_scenario_CCE = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*CCE_population,  # See Barlow et al. 2008 eq 6 for explanation
+         PPR_scenario_global = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*`Population estimate`,
+         PPR_scenario_global_historical = TotalAnnualPreyConsumed_kg*0.1111*((1/0.1)^(2.2-1))*`Total removed`)    
+
+
+#From Chavez and Messie 2009
+npp_gm2 <- 479
+CCEarea_km2 <- 225000
+npp_kg <- npp_gm2/1000 * CCEarea_km2*1000^2
+
+PPR_table <- PPR_data %>% 
+  group_by(Species, scenario) %>% 
+  summarise(PPR_mean_CCE = mean(PPR_scenario_CCE),
+            PPR_se_CCE = SE(PPR_scenario_CCE),
+            NPP_to_whales_CCE = PPR_mean_CCE/npp_kg,
+            PPR_mean_global = mean(PPR_scenario_global),
+            PPR_se_global = SE(PPR_scenario_global),
+            NPP_to_whales_global = PPR_mean_global/(47500000000*1000),
+            PPR_mean_global_historical = mean(PPR_scenario_global_historical),
+            PPR_se_global_historical = SE(PPR_scenario_global_historical),
+            NPP_to_whales_global_historical = PPR_mean_global_historical/(47500000000*1000)) # From Longhurst et al. 1995
 
 
 #summary tables of population nutrients recycled per year (Figure 5) ----
 
-# Just doing Southern Ocean iron for now...
+#Southern Ocean iron recylcing...
 
 rnorm_trunc <- function(n, mean = 0, sd = 1, lower = 0, upper = Inf) {
   result <- rnorm(n, mean, sd)
@@ -1888,11 +2168,13 @@ rnorm_trunc <- function(n, mean = 0, sd = 1, lower = 0, upper = Inf) {
   result
 }
 
+# THIS one needed for plots
+Fe_total_dw <- function(x) {
+  (x*0.8)*0.25*0.146 # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
+} # From Doughty et al. 2016, Roman and McCarthy 2010
 
-# Fe_total_dw <- function(x) {
-#   (x*0.8)*0.25*0.146 # Projection of the total weight of feces, multiplied by 0.25 to convert to dry weight, and the 0.146 is the amount of iron (in kg!!!!) per TONNE of whale feces (converted from 0.000146 kg Fe per kg of feces)
-# } # From Doughty et al. 2016, Roman and McCarthy 2010 
 
+# THIS one needed for numeric estimates
 Fe_total_dw <- function(x) {
   (x*runif(length(x), 0.7, 0.9))*   # saying the amount of iron excreted ranges uniformly betweek 70-90% ingested, see Ratnarajah et al. 2016
     0.25*
@@ -1910,7 +2192,16 @@ Fe_total_dw <- function(x) {
 # } # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
 
 
+AntKrill_FeResRey <- function(x) {
+  (x *(1-0.7726) * # convert from wet weight (in tonnes) krill ingested to dry weightfrom Nicol S, Stolp M, Nordstrom O (1992) Change in the gross biochemistry and mineral content accompanying the moult cycle in the Antarctic krill Euphausia superba. Mar Biol 113(2).
+    1000 * # convert from tonnes to kg 
+    rnorm(length(x), 145, 133.7) / # proportion E. superba that is iron (whole krill) in mg kg-1
+    1e9) *     #convert from mg to tonnes
+    rnorm(length(x), 0.8, 0.05)      #saying that 80% (distribution) of ingested iron is excreted                     
+  
+}
 
+#mean(AntKrill_FeRes(509000000))
 
 Fe_t_to_C_export_t <- function(x) {
   x * 1e6 *             #convert tonnes to grams
@@ -1920,39 +2211,67 @@ Fe_t_to_C_export_t <- function(x) {
 }
 
 
+# USE THIS EQUATION
+Fe_t_to_C_export_t <- function(x) {
+  runif(length(x), 0.7, 0.9) *      #assumes 0.8 of feces stays in photic zone long enough to be utilized by phytoplankton;  # can change runif to 0.8 for graphing
+  (((((x * 1e6) *             #convert tonnes to grams
+    0.017907) *           #convert grams iron to moles iron
+    5e4) * 12.0107) /     #convert to moles carbon exported (Lavery et al. 2010), convert back to grams carbon
+    1e6)              #convert to tonnes carbon exported
+}
+
+
+
+Fe_t_to_C_export_t <- function(x) {
+  runif(10000, 0.7, 0.9) *      #assumes 0.8 of feces stays in photic zone long enough to be utilized by phytoplankton;  # can change runif to 0.8 for graphing
+    (((x * 17907)*           #convert tonnes iron to moles iron
+         5e4) /           #convert to moles carbon exported (Lavery et al. 2010)
+       83259)        #convert to tonnes carbon exported
+}
+
+
+mean(Fe_t_to_C_export_t(10000))
+
+
+#Fe_t_to_C_export_t(16895.11*0.8)
 
 Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>%
   
+  #Using estimate of fecal production
   mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), 
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")),
             .funs = list(Fe = ~Fe_total_dw(.)/1000)) %>% # need to divide by 1000 to get the total iron recycled in tonnes
+
+  # # Simply saying that 80% of ingested iron is excreted
+  # mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+  #                  "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")),
+  #           .funs = list(Fe = ~AntKrill_FeResRey(.))) %>% # need to divide by 1000 to get the total iron recycled in tonnes
+   
   
   mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
                    "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), 
             .funs = list(C_produced_Mt = ~(Fe_t_to_C_export_t(.)*3)/1e6)) %>% # Carbon production (~3x what is exported) stimulated by Fe defecation in Mt C
   
+  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
+                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")),
+            .funs = list(C_respired_Mt = ~(.*(0.1*0.75))/1e6)) %>%   # Carbon respired by populations in Mt C
+  
   mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
                    "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), 
-            .funs = list(C_exported_Mt = ~Fe_t_to_C_export_t(.)*
-                           runif(length(.), 0.6, 1)/1e6)) 
+            .funs = list(C_exported_Mt = ~Fe_t_to_C_export_t(.)/1e6))
 
 ## estimated C respired is as simple as:
 # pre-whaling
-quantile(runif(10000, 0.003, 0.006)*4760) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
+#quantile(runif(10000, 0.003, 0.006)*4760) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
 
 # post-whaling
-quantile(runif(10000, 0.003, 0.006)*580) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
-
-
-# mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-#                  "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), 
-#           .funs = list(C_respired_Mt = ~(.*(0.1*
-#                                               runif(length(.), 0.25, 0.75))/1e6)))  # Carbon respired by populations in Mt C
+#quantile(runif(10000, 0.003, 0.006)*580) # amount respired is 0.03-0.06% of that, see van Franeker et al 1997; PPR are my calculations
 
 
 
 
 
+# Using estimate of fecal production
 summ_SO_pop_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
   group_by(SpeciesCode, region) %>% 
   summarise(
@@ -1981,6 +2300,22 @@ summ_SO_pop_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>%
 summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>% 
   group_by(SpeciesCode, region) %>% 
   summarise(
+    
+    C_respired_med_curr_low = median(med_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_curr_low = median(IQR25_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_curr_low = median(IQR75_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
+
+    C_respired_med_curr_high = median(med_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_curr_high = median(IQR25_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_curr_high = median(IQR75_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
+
+    C_respired_med_hist_low = median(med_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_hist_low = median(IQR25_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_hist_low = median(IQR75_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
+
+    C_respired_med_hist_high = median(med_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR25_hist_high = median(IQR25_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
+    C_respired_IQR75_hist_high = median(IQR75_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
     
     C_induced_med_curr_low = median(med_ingest_low_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
     C_induced_IQR25_curr_low = median(IQR25_ingest_low_t_curr_Fe_C_produced_Mt, na.rm = TRUE),
@@ -2022,8 +2357,12 @@ summ_SO_pop_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>%
 # In 1900 global CO2 emissions was ~1958 Mt; whale C export was 57-196Mt or 4-10% of global CO2 emissions at the time
 # In 2000 global CO2 emissions was ~24,670 Mt; whale C export was 6-23Mt or 0.02-0.09% of global CO2 emissions at the time
 
+
+
+
+
 # Total Fe recycled by E. superba population
-665e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
+133e12/0.486 * # number of krill in entire pop (first number is biomass in Mt); at 0.486g per krill (Atkinson et al. 2009)
   1.5917e-7 * # converting from 2.85 nmol iron recycled per day per krill in g
   182.5 /     # number of productive days in Austral summer
   1e12      # converting from grams to Mt
@@ -2039,104 +2378,50 @@ Fe_t_to_C_export_t(
   0.2 # the porportion of iron in krill feces that persists in the photic zone for use by phytoplankton
 
 
-# Southern Hemisphere Fe, current
-Annual_ingestion_PopCurr_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
-  ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe, ymax = IQR75_ingest_low_t_curr_Fe, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe, ymax = IQR75_ingest_high_t_curr_Fe, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe, color = Species), 
-            size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  scale_colour_manual(values = pal) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  labs(x = "Days feeding",
-       y = bquote('Estimated Fe recycled'~(tonnes~yr^-1))) + 
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(1, 5000),
-                breaks = c(1,10, 100, 500, 1000, 2500, 5000)) +
-  theme_minimal(base_size = 24) +
-  theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
-Annual_ingestion_PopCurr_Antarctic_Fe
-
-dev.copy2pdf(file="Annual_ingestion_PopCurr_Antarctic_Fe.pdf", width=14, height=9)
-
-
-
-
-# Southern Hemisphere Fe, historic
-Annual_ingestion_PopHist_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
-  mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
-  ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe, ymax = IQR75_ingest_low_t_hist_Fe, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe, ymax = IQR75_ingest_high_t_hist_Fe, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe, color = Species), 
-            size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  scale_colour_manual(values = pal) +
-  facet_grid(~Species) +   # Can add region in here if desired
-  labs(x = "Days feeding",
-       y = bquote('Projected Fe recycled'~(tonnes~yr^-1))) + 
-  scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
-  scale_y_log10(labels = scales::comma, limits = c(1, 12000),
-                breaks = c(1,10, 100, 500, 1000, 2500, 5000, 10000)) +
-  theme_minimal(base_size = 24) +
-  theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
-Annual_ingestion_PopHist_Antarctic_Fe
-
-dev.copy2pdf(file="Annual_ingestion_PopHist_Antarctic_Fe.pdf", width=14, height=9)
 
 
 # Southern Hemisphere Fe, COMBINED
 Annual_ingestion_PopComb_Antarctic_Fe <- Annual_filtfeed_Ant_projection_Nutrients %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
+  
+  # geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe, color = Species),
+  #           size = 1.5, linetype = "dashed") +
+  # geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe, color = Species),
+  #           size = 1.5, linetype = "dashed") +
+  
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe, ymax = IQR75_ingest_low_t_hist_Fe, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe, ymax = IQR75_ingest_high_t_hist_Fe, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe, ymax = IQR75_ingest_high_t_hist_Fe,
+  #                 x=days_feeding),
+  #             fill = "grey70", alpha = 0.5) +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe, ymax = IQR75_ingest_low_t_curr_Fe, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe, ymax = IQR75_ingest_high_t_curr_Fe, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe, ymax = IQR75_ingest_high_t_curr_Fe,
+  #                 x=days_feeding),
+  #             fill = "grey70", alpha = 0.5) +
   geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe, color = Species), 
             size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  
-  
   
   geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe, color = Species), 
             size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe, color = Species), 
-            size = 1.5, linetype = "dashed") +
+
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Projected Fe recycled'~(tonnes~yr^-1))) + 
+       y = bquote(atop('Projected Fe recycled',
+                       ~(tonnes~yr^-1)))) + 
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = scales::comma, limits = c(2, 12000),
                 breaks = c(1, 10, 100, 500, 1000, 2500, 5000, 10000)) +
-  theme_minimal(base_size = 24) +
+  theme_minimal(base_size = 32) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
+        legend.position = "none",
+        axis.text.x = element_text(size = 20)
+        )
 Annual_ingestion_PopComb_Antarctic_Fe
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_Fe.pdf", width=14, height=8)
@@ -2144,49 +2429,89 @@ dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_Fe.pdf", width=14, height=
 
 
 
-# Southern Hemisphere C net, COMBINED
+# Southern Hemisphere C export, COMBINED
 
 Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nutrients %>% 
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, 
+
+  # geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe_C_exported_Mt, color = Species), 
+  #           size = 1.5, linetype = "dashed") +
+  # geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe_C_exported_Mt, color = Species), 
+  #           size = 1.5, linetype = "dashed") +
+
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr_Fe_C_exported_Mt, ymax = IQR75_ingest_high_t_curr_Fe_C_exported_Mt, 
+  #                 x=days_feeding), 
+  #             fill = "grey70", alpha = 0.5) +
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr_Fe_C_exported_Mt, ymax = IQR75_ingest_low_t_curr_Fe_C_exported_Mt, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
   
-  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, 
+  geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist_Fe_C_exported_Mt, ymax = IQR75_ingest_low_t_hist_Fe_C_exported_Mt, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, ymax = IQR75_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
-  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist_Fe_C_exported_Mt, ymax = IQR75_ingest_high_t_hist_Fe_C_exported_Mt, 
+  #                 x=days_feeding), 
+  #             fill = "grey70", alpha = 0.5) +
+  
+  geom_line(aes(days_feeding, med_ingest_low_t_curr_Fe_C_exported_Mt, color = Species), 
             size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_curr_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  
-  
-  
-  geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
+  geom_line(aes(days_feeding, med_ingest_low_t_hist_Fe_C_exported_Mt, color = Species), 
             size = 1.5) +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist_Fe_C_produced_Mt_C_exported_Mt, color = Species), 
-            size = 1.5, linetype = "dashed") +
+
   scale_colour_manual(values = pal) +
   facet_grid(~Species) +   # Can add region in here if desired
   labs(x = "Days feeding",
-       y = bquote('Projected C exported'~(Mt~yr^-1))) + 
+       y = bquote(atop('Projected C exported',
+                       ~(Mt~yr^-1)))) + 
+  # scale_y_log10(limits = c(0.01, 120),
+  #               breaks = c(0.01, 0.1, 1, 10, 100))+
   scale_x_continuous(breaks = c(60, 90, 120, 150, 180)) +
   scale_y_log10(labels = function(x) sprintf("%g", x),
-                limits = c(0.01, 120),
-                breaks = c(0.01, 0.1, 1, 10, 100)) +
-  theme_minimal(base_size = 24) +
+                limits = c(0.025, 120),
+                breaks = c(0.01,0.1, 1, 10, 100)) +
+  theme_minimal(base_size = 32) +
   theme(strip.text = element_text(face = "italic"),
-        legend.position = "none")
+        legend.position = "none",
+        axis.text.x = element_text(size = 20)
+        )
 Annual_ingestion_PopComb_Antarctic_C_export
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_C_export.pdf", width=14, height=8)
 
+
+
+
+
+
+
+## Old code below here ----
+
+
+
+SBNMS_humpbacks_JML <-  scan(text= "mn160617-25
+                             mn160619-25b
+                             mn160619-36
+                             mn160622-25
+                             mn160622-36
+                             mn170612-10b
+                             mn170612-30
+                             mn170612-40
+                             mn170613-40
+                             mn170615-30
+                             mn170615-40b
+                             mn180620-40
+                             mn180620-42
+                             mn180620-44
+                             mn180620-45
+                             mn180621-47
+                             mn180622-42
+                             mn180622-44
+                             mn180624-42
+                             mn180624-44
+                             mn180624-45
+                             mn180624-47a
+                             mn180624-47b
+                             mn180626-47", what="")
 
 

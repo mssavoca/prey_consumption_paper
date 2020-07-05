@@ -745,12 +745,11 @@ pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", "B. eden
 
 #Supplemental figure of whale lengths
 All_droned_lengths <- whale_lengths %>% 
-  filter(!SpeciesCode %in% c("bs")) %>% 
-  #filter(ID != "bw180904-44") %>% 
+  #filter(!SpeciesCode %in% c("bs")) %>% 
   group_by(name, SpeciesCode) %>% 
   ungroup %>% 
   #mutate(sp_lbl = factor(abbr_binom(Species)) %>% fct_rev) %>% 
-  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. edeni","B. physalus", "B. musculus"), 
+  ggplot(aes(x = fct_relevel(factor(abbr_binom(Species)), "B. bonaerensis", "M. novaeangliae", "B. edeni","B. borealis","B. physalus", "B. musculus"), 
              y = length,
              fill = abbr_binom(Species))) +
   geom_flat_violin(position = position_nudge(x = 0.1, y = 0), alpha = .8) +
@@ -766,6 +765,8 @@ All_droned_lengths <- whale_lengths %>%
 All_droned_lengths
 
 dev.copy2pdf(file="All_droned_lengths.pdf", width=12, height=8)
+
+whale_lengths %>% group_by(Species) %>% summarize(tot_n = n_distinct(name))
 
 
 Engulfment_capacity <- whale_lengths %>% 
@@ -2056,13 +2057,6 @@ Annual_ingestion_PopComb_Antarctic
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic.pdf", width=14, height=8)
 
-
-col_summ <- function(tbl, f) {
-  rbind(
-    tbl,
-    map(tbl, ~ if(is.numeric(.x)) f(.x) else NA)
-  )
-}
 
 
 
