@@ -15,7 +15,7 @@ abbr_binom <- function(binom) {
         sep = ".")
 }
 
-# stuff from Max to generate data ----
+# Tag summary data ----
 
 load("rates_CATS_updated_5_14_20.RData") # CATS deployment summary
 
@@ -50,7 +50,7 @@ KC_nontagged_lengths <- read_xlsx("Whales_for_Savoca_untagged_fromKC.xlsx", skip
 
 
 # bringing in whale length data from Paolo; using allometric equations from Shirel to convert to engulfment capacity
-# Allometric equations from Shirel UPDATED from her paper
+# Allometric equations from Shirel UPDATED from Kahane-Rapport and Goldbodgen (2018) paper
 # creating fucntions using new data from Shirel and DC for for engulfment capacity in m3 for each species where we have a known length
 
 engulf_allo <- tribble(
@@ -194,13 +194,6 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
     BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
     BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
     Study_Area = NA
-    # 
-    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
-    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
-    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
-    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
-    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
-    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
   ) %>% 
   select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) %>% 
   mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(10^.x))
@@ -238,13 +231,7 @@ ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>%
     BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
     BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
     Study_Area = NA
-    # 
-    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
-    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
-    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
-    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
-    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
-    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+
   ) %>% 
   select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
 
@@ -289,19 +276,6 @@ All_krill_data_ENPcombined_noSA <- rbind(ENP_krill_data, WAP_krill_data) %>%
 
 
 
-  
-# load("~/Documents/Research Data/Whale research/ShirelCh2/rates_DTAG only_9.17.19_long.RData")
-# 
-# lunge_rates_DTAG <- dtag_lunges_long %>% 
-#   mutate_at(vars(Rate), ~replace(., is.nan(.), 0)) %>% 
-#   rename(`Time (hours)` = Hours) %>% 
-#   mutate(prey_general = "Krill",
-#          Study_Area = "SoCal",
-#          Region = "Eastern North Pacific",
-#          tag_type = "DTAG")
-
-
-
 # Generate daily rates----
 # combine day and twilight
 combine_rates <- function(df, keys) {
@@ -331,19 +305,12 @@ daynight_rates <- lunge_rates %>%
   ungroup() %>% 
   mutate(species_code = substr(ID, 1, 2),
          prey_general = ifelse(is.na(prey_general), "Krill", prey_general)) %>% 
-  #MODIFIED BY MATT TO ADD BRYDE'S
+  #ADDING BRYDE'S
   bind_rows(Brydes_lunges_for_join)
 
 ss_table_dn <- daynight_rates %>%
   group_by(species_code, region) %>%
   summarise(sample_size = n())
-
-
-# %>% 
-#   # Modified by Matt here
-#   rename(SpeciesCode = "species_code") %>% 
-#   left_join(whale_lengths, SpeciesCode, Engulfment_m3
-
 
 
 
@@ -403,21 +370,6 @@ krill_rate_estimates <- estimate_rate("Krill", 1, 1)
 
 
 
-# day_dist <- daynight_rates %>% 
-#   filter(species_code == "bw") %>% 
-#   mutate(dur_bucket = cut_width(day_dur, 1, boundary = 0)) %>% 
-#   group_by(dur_bucket) %>% 
-#   summarise(mean_rate = mean(day_rate),
-#             sd_rate = sd(day_rate)) 
-# 
-# 
-# daynight_rates %>% 
-#   filter(species_code == "bw") %>% 
-#   mutate(dur_bucket = cut_width(day_dur, 1, boundary = 0)) %>% 
-#   ggplot(aes(day_dur, day_rate)) + geom_point() + geom_smooth(method = "lm")
-# 
-# ggplot(day_dist, aes(dur_bucket, mean_rate)) +
-#   geom_pointrange(aes(ymin = mean_rate-sd_rate , ymax = mean_rate+sd_rate))
 
 
 
@@ -479,8 +431,6 @@ krill_biomass_estimates <- krill_rate_estimates %>%
   left_join(All_krill_data_ENPcombined_noSA, by = c("SpeciesCode", "region"))
 
 
-###### write_csv(krill_biomass_estimates, "krill_biomass_estimates_for_editing.csv")
-
 
 
 # Assuming Sep 15, 12.5 hours of daylight
@@ -489,8 +439,6 @@ krill_rate_estimates %>%
   mutate(daily_rate = day_rate * 12.5 + night_rate * 11.5) %>% 
   pull(daily_rate) %>% 
   quantile(c(0.25, 0.5, 0.75, 0.95))
-# 25%      50%      75%      95% 
-#   153.2969 208.8918 289.6198 471.0381
 
 
 krill_rate_estimates_DEC %>% 
@@ -498,8 +446,7 @@ krill_rate_estimates_DEC %>%
   mutate(daily_rate = day_rate * 12.5 + night_rate * 11.5) %>% 
   pull(daily_rate) %>% 
   quantile(c(0.25, 0.5, 0.75, 0.95))
-# 25%      50%      75%      95% 
-#   140.1731 205.0902 287.1584 457.2846 
+
 
 weighted_MFC <- krill_rate_estimates %>% 
   filter(species_code == "bw") %>% 
@@ -533,7 +480,7 @@ latitudes <- tribble(
   "Temperate", 36
 )
 
-# Overall daily rate, Modified by MATT
+# Overall daily rate
 estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
   yday_start <- floor(yday_center - season_len / 2)
   yday_end <- floor(yday_center + season_len / 2)
@@ -549,14 +496,10 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       yday = lubridate::yday(day)
     )
   
-  #browser()
-  # MATT: change rate_estimates to biomass_estimates
+
   daily_rates <- krill_biomass_estimates %>% 
     left_join(daylengths, by = "region") %>% 
-    # MATT: change daily_rate to daily_biomass
     group_by(SpeciesCode, region) %>% 
-    # mutate(biomass_best_low_m3 = rlnorm(n(), Biomass[1], `Biomass sd`[1]),
-    #        biomass_best_high_m3 = rlnorm(n(), BiomassTop50[1], BiomassTop50sd[1]),
     mutate(daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
     ungroup() %>% 
     mutate(
@@ -564,34 +507,8 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       daily_mean_high_kg = pmap_dbl(list(BiomassTop50, BiomassTop50sd, daily_rate), ~mean(rlnorm(floor(..3), ..1, ..2))),
       daily_consumption_low_kg = daily_mean_low_kg*Engulf_cap_m3*daily_rate, 
       daily_consumption_high_kg = daily_mean_high_kg*Engulf_cap_m3*daily_rate) 
-      # daily_biomass_kg_best_low = biomass_best_low_m3*Engulf_cap_m3*daily_rate,
-      #      daily_biomass_kg_best_high = biomass_best_high_m3*Engulf_cap_m3*daily_rate)
-  
-  
-  
- # prey_biomass = rlnorm log mean 
-  
-  # daily_rate_summ <- daily_rates %>% 
-  #   group_by(species_code, yday, region) %>% 
-  #   summarize(
-  #     q25 = quantile(daily_rate, 0.25),
-  #     q50 = quantile(daily_rate, 0.50),
-  #     q75 = quantile(daily_rate, 0.75),
-  #     q95 = quantile(daily_rate, 0.95)
-  #   ) %>% 
-  #   ungroup()
-  # 
-  # filter(daily_rate_summ, species_code == "bw") %>% 
-  #   ggplot(aes(yday)) +
-  #   geom_ribbon(aes(ymin = q25, ymax = q75), fill = "grey80") +
-  #   geom_line(aes(y = q50, group = 1)) +
-  #   expand_limits(y = 0) +
-  #   labs(x = "Julian day", y = "Lunges per day") +
-  #   theme_classic()
 }
 
-# MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
-# columns day_biomass and night_biomass.
 
 aug1 <- 213
 krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, aug1, 120)  %>% 
@@ -654,7 +571,7 @@ latitudes <- tribble(
   "Temperate", 36
 )
 
-# Overall daily rate, Modified by MATT
+# Overall daily rate
 estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
   yday_start <- floor(yday_center - season_len / 2)
   yday_end <- floor(yday_center + season_len / 2)
@@ -670,11 +587,9 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       yday = lubridate::yday(day)
     )
   
-  #browser()
-  # MATT: change rate_estimates to biomass_estimates
+
   daily_rates_fish <- fish_biomass_estimates %>% 
     left_join(daylengths, by = "region") %>% 
-    # MATT: change daily_rate to daily_biomass
     group_by(SpeciesCode, region) %>% 
     mutate(
       # fish_biomass_best_high_m3 = rnorm(n(), 0.375, 0.243),
@@ -686,31 +601,9 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       daily_mean_high_kg = mean(rnorm(floor(daily_rate), 0.375, 0.243))*7.8,
       daily_consumption_low_kg = daily_mean_low_kg*Engulf_cap_m3*daily_rate, 
       daily_consumption_high_kg = daily_mean_high_kg*Engulf_cap_m3*daily_rate) 
-  
-
-  # prey_biomass = rlnorm log mean 
-  
-  # daily_rate_summ <- daily_rates %>% 
-  #   group_by(species_code, yday, region) %>% 
-  #   summarize(
-  #     q25 = quantile(daily_rate, 0.25),
-  #     q50 = quantile(daily_rate, 0.50),
-  #     q75 = quantile(daily_rate, 0.75),
-  #     q95 = quantile(daily_rate, 0.95)
-  #   ) %>% 
-  #   ungroup()
-  # 
-  # filter(daily_rate_summ, species_code == "bw") %>% 
-  #   ggplot(aes(yday)) +
-  #   geom_ribbon(aes(ymin = q25, ymax = q75), fill = "grey80") +
-  #   geom_line(aes(y = q50, group = 1)) +
-  #   expand_limits(y = 0) +
-  #   labs(x = "Julian day", y = "Lunges per day") +
-  #   theme_classic()
 }
 
-# MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
-# columns day_biomass and night_biomass.
+
 
 aug1 <- 213
 fish_daily <- estimate_daily(daily_rates_fish, latitudes, aug1, 120) %>% 
@@ -794,7 +687,7 @@ Engulfment_capacity
 
 dev.copy2pdf(file="Engulfment_capacity.pdf", width=14, height=6.5)
 
-##Figure 2----
+##Figure 2 draft----
 #summary tables of lunges, water filtered, and prey consumed per day 
 summ_stats_all <- krill_daily %>%    # toggle between fish and krill
   group_by(SpeciesCode, region) %>% 
@@ -1697,14 +1590,10 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       yday = lubridate::yday(day)
     )
   
-  #browser()
-  # MATT: change rate_estimates to biomass_estimates
+
   daily_rates <- krill_Ant_projection %>% 
     left_join(daylengths, by = "region") %>% 
-    # MATT: change daily_rate to daily_biomass
     group_by(SpeciesCode, region) %>% 
-    # mutate(biomass_best_low_m3 = rlnorm(n(), Biomass[1], `Biomass sd`[1]),
-    #        biomass_best_high_m3 = rlnorm(n(), BiomassTop50[1], BiomassTop50sd[1]),
     mutate(daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
     ungroup() %>% 
     mutate(
@@ -1712,35 +1601,9 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
       daily_mean_high_kg = pmap_dbl(list(BiomassTop50, BiomassTop50sd, daily_rate), ~mean(rlnorm(floor(..3), ..1, ..2))),
       daily_consumption_low_kg = daily_mean_low_kg*Engulf_cap_m3*daily_rate, 
       daily_consumption_high_kg = daily_mean_high_kg*Engulf_cap_m3*daily_rate) 
-  # daily_biomass_kg_best_low = biomass_best_low_m3*Engulf_cap_m3*daily_rate,
-  #      daily_biomass_kg_best_high = biomass_best_high_m3*Engulf_cap_m3*daily_rate)
-  
-  
-  
-  
-  # prey_biomass = rlnorm log mean 
-  
-  # daily_rate_summ <- daily_rates %>% 
-  #   group_by(species_code, yday, region) %>% 
-  #   summarize(
-  #     q25 = quantile(daily_rate, 0.25),
-  #     q50 = quantile(daily_rate, 0.50),
-  #     q75 = quantile(daily_rate, 0.75),
-  #     q95 = quantile(daily_rate, 0.95)
-  #   ) %>% 
-  #   ungroup()
-  # 
-  # filter(daily_rate_summ, species_code == "bw") %>% 
-  #   ggplot(aes(yday)) +
-  #   geom_ribbon(aes(ymin = q25, ymax = q75), fill = "grey80") +
-  #   geom_line(aes(y = q50, group = 1)) +
-  #   expand_limits(y = 0) +
-  #   labs(x = "Julian day", y = "Lunges per day") +
-  #   theme_classic()
+
 }
 
-# MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
-# columns day_biomass and night_biomass.
 
 aug1 <- 213
 krill_daily_Ant_projection <- estimate_daily(krill_Ant_projection, latitudes, aug1, 120)  %>% 
@@ -2175,15 +2038,6 @@ Fe_total_dw <- function(x) {
 } # average and sd of Fe conc in whale feces from: Ratnarajah et al. 2014  
 
 
-## THESE ARE NOT CORRECT ANYMORE
-# N_calc_kg <- function(x) {
-#   x*0.8*0.25*0.0056 # THINK ABOUT THE 0.25
-# } # see Roman et al. 2016, converted moles PON to g to kg
-# 
-# P_calc_kg <- function(x) {
-#   x*0.8*0.0089
-# } # whale fecal average from Ratnarajah et al. 2014 NEED TO CHECK
-
 
 
 
@@ -2462,36 +2316,5 @@ Annual_ingestion_PopComb_Antarctic_C_export <- Annual_filtfeed_Ant_projection_Nu
 Annual_ingestion_PopComb_Antarctic_C_export
 
 dev.copy2pdf(file="Annual_ingestion_PopComb_Antarctic_C_export.pdf", width=14, height=8)
-
-
-# Old code below here
-
-Annual_filtfeed_Ant_projection_Nutrients <- Annual_filtfeed_Ant_projection %>% 
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(Fe = ~Fe_total_dw(.)/1000)) %>% # need to divide by 1000 to get the total iron recycled in tonnes
-  mutate_at(vars(c("med_ingest_low_t_curr_Fe":"IQR75_ingest_high_t_curr_Fe",
-                   "med_ingest_low_t_hist_Fe":"IQR75_ingest_high_t_hist_Fe")), .funs = list(C_produced_Mt = ~((.*0.75)/1e6)*11111.11)) %>% # Carbon production stimulated by Fe defecation in Mt C
-  mutate_at(vars(c("med_ingest_low_t_curr":"IQR75_ingest_high_t_curr",
-                   "med_ingest_low_t_hist":"IQR75_ingest_high_t_hist")), .funs = list(C_respired_Mt = ~(.*(0.1*0.75))/1e6)) %>%   # CHECK THIS, SHOULD BE 0.1, not 0.45? Carbon respired by populations in Mt C
-  mutate_at(vars(c("med_ingest_low_t_curr_Fe_C_produced_Mt":"IQR75_ingest_high_t_curr_Fe_C_produced_Mt",
-                   "med_ingest_low_t_hist_Fe_C_produced_Mt":"IQR75_ingest_high_t_hist_Fe_C_produced_Mt")), 
-            .funs = list(C_exported_Mt = ~.*0.92))   #This is in fact C export; Check Lavery et al. 2010 ref, pg 3
-
-
-# C_respired_med_curr_low = median(med_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR25_curr_low = median(IQR25_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR75_curr_low = median(IQR75_ingest_low_t_curr_C_respired_Mt, na.rm = TRUE),
-# 
-# C_respired_med_curr_high = median(med_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR25_curr_high = median(IQR25_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR75_curr_high = median(IQR75_ingest_high_t_curr_C_respired_Mt, na.rm = TRUE),     
-# 
-# C_respired_med_hist_low = median(med_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR25_hist_low = median(IQR25_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR75_hist_low = median(IQR75_ingest_low_t_hist_C_respired_Mt, na.rm = TRUE), 
-# 
-# C_respired_med_hist_high = median(med_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR25_hist_high = median(IQR25_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),
-# C_respired_IQR75_hist_high = median(IQR75_ingest_high_t_hist_C_respired_Mt, na.rm = TRUE),                            
 
 
