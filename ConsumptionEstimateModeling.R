@@ -5,6 +5,7 @@ library(maptools)
 library(readxl)
 library(ggpubr)
 library(purrr)
+library(lubridate)
 
 SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
@@ -302,7 +303,7 @@ krill_biomass_estimates <- krill_rate_estimates %>%
            213, # August 1 in northern hemisphere
            30 # January 30 in southern hemisphere
          )) %>% 
-  ungroup %>% 
+  ungroup() %>% 
   left_join(krill_data_Scaling_paper, by = c("SpeciesCode", "region"))
 
 
@@ -314,29 +315,42 @@ krill_rate_estimates %>%
   pull(daily_rate) %>% 
   quantile(c(0.25, 0.5, 0.75, 0.95))
 
-
-
-latitudes <- tribble(
-  ~ region,    ~ latitude,
-  "Polar",     65,
-  "Temperate", 36
-)
-
 # Overall daily rate, Modified by MATT
-estimate_daily <- function(rate_estimates, latitude, season_len) {
-  yday_start <- floor(yday_center - season_len / 2)
-  yday_end <- floor(yday_center + season_len / 2)
-  year_start <- as.POSIXct("2019-12-31", tz = "UTC")
-  feeding_days <- year_start + lubridate::days(yday_start:yday_end)
-  
-  daylengths <- crossing(day = feeding_days, latitude) %>% 
-    mutate(
-      sunrise = maptools::sunriset(cbind(0, latitude), day, direction = "sunrise"),
-      sunset = maptools::sunriset(cbind(0, latitude), day, direction = "sunset"),
-      daylen = 24 * (sunset - sunrise),
-      nightlen = 24 - daylen,
-      yday = lubridate::yday(day)
-    )
+estimate_daily <- function(rate_estimates, season_len) {
+  # Peak of feeding season
+  polar_peak <- as.POSIXct("2019-12-31", tz = "UTC") + days(48) # Feb 17
+  temperate_peak <- as.POSIXct("2019-12-31", tz = "UTC") + days(231) # Aug 18
+  # Latitudes
+  polar_lat <- -65
+  temperate_lat <- 36
+  half_season <- floor(season_len / 2)
+  # Day and night lengths
+  feeding_days <- tibble(
+    # Feeding days, polar and temperate
+    polar_feeding = seq(polar_peak - days(half_season),
+                        polar_peak + days(half_season),
+                        by = "1 day"),
+    temperate_feeding = seq(temperate_peak - days(half_season),
+                            temperate_peak + days(half_season),
+                            by = "1 day"),
+    # Hours day/night, polar and temperate
+    polar_sunrise = sunriset(cbind(0, polar_lat), 
+                             polar_feeding, 
+                             direction = "sunrise"),
+    polar_sunset = sunriset(cbind(0, polar_lat), 
+                            polar_feeding, 
+                            direction = "sunset"),
+    polar_daylen = 24 * (polar_sunset - polar_sunrise),
+    polar_nightlen = 24 - polar_daylen,
+    temperate_sunrise = sunriset(cbind(0, temperate_lat), 
+                                 temperate_feeding, 
+                                 direction = "sunrise"),
+    temperate_sunset = sunriset(cbind(0, temperate_lat), 
+                                temperate_feeding, 
+                                direction = "sunset"),
+    temperate_daylen = 24 * (temperate_sunset - temperate_sunrise),
+    temperate_nightlen = 24 - temperate_daylen
+  )
   
   # This function allows for NAs in logmean (i.e. Antarctic hypothetical low) and truncation
   # to the upper 50% (i.e. to account for selectivity)
@@ -349,24 +363,21 @@ estimate_daily <- function(rate_estimates, latitude, season_len) {
         rlnorm(n, meanlog, sdlog)
       }
     }
+    
     result <- pmap_dbl(list(lunges, 
                             ifelse(is.na(logmean), 0, logmean), 
                             logsd), 
                        ~ mean(rand(floor(..1), ..2, ..3)))
-    result <- result[is.na(logmean)] <- NA
+    result[is.na(logmean)] <- NA
     result
   }
   
-  # MATT: change rate_estimates to biomass_estimates
-  krill_biomass_estimates %>% 
-    left_join(daylengths, by = "region") %>% 
-    # MATT: change daily_rate to daily_biomass
-    group_by(SpeciesCode, region) %>% 
-    # mutate(biomass_best_low_m3 = rlnorm(n(), Biomass[1], `Biomass sd`[1]),
-    #        biomass_best_high_m3 = rlnorm(n(), BiomassTop50[1], BiomassTop50sd[1]),
-    mutate(daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
-    ungroup() %>% 
+  rate_estimates %>% 
+    full_join(feeding_days, by = character()) %>%
     mutate(
+      daylen = ifelse(region == "Polar", polar_daylen, temperate_daylen),
+      nightlen = ifelse(region == "Polar", polar_nightlen, temperate_nightlen),
+      daily_rate = day_rate * daylen + night_rate * nightlen,
       daily_mean_hyp_low_kg = get_daily_mean(Biomass_hyp_low, `Biomass sd`, daily_rate, trunc = FALSE),
       daily_mean_kg = get_daily_mean(Biomass, `Biomass sd`, daily_rate, trunc = FALSE),
       daily_mean_hyp_high_kg = get_daily_mean(Biomass, `Biomass sd`, daily_rate, trunc = TRUE),
@@ -380,20 +391,31 @@ estimate_daily <- function(rate_estimates, latitude, season_len) {
 # columns day_biomass and night_biomass.
 
 
-krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, peak_day, 120)  %>% 
-  mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
-                                                     region == "Temperate" ~ daily_consumption_low_kg*3628),
-         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_high_kg*4575,
-                                                      region == "Temperate" ~ daily_consumption_high_kg*3628),
-         Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/(Mass_est_t*1000),
-         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/(Mass_est_t*1000),
-         Species = case_when(
-           SpeciesCode == "bw" ~ "Balaenoptera musculus",
-           SpeciesCode == "bp" ~ "Balaenoptera physalus",
-           SpeciesCode == "mn" ~ "Megaptera novaeangliae",
-           SpeciesCode == "bb" ~ "Balaenoptera bonaerensis", 
-           SpeciesCode == "be" ~ "Balaenoptera brydei",
-           SpeciesCode == "bs" ~ "Balaenoptera borealis")
+krill_daily <- krill_biomass_estimates %>% 
+  estimate_daily(120) %>% 
+  mutate(
+    Total_energy_intake_low_kJ = case_when(
+      region == "Polar" ~ daily_consumption_hyp_low_kg * 4575,
+      region == "Temperate" ~ daily_consumption_hyp_low_kg * 3628
+    ),
+    Total_energy_intake_kJ = case_when(
+      region == "Polar" ~ daily_consumption_kg * 4575,
+      region == "Temperate" ~ daily_consumption_kg * 3628
+    ),
+    Total_energy_intake_high_kJ = case_when(
+      region == "Polar" ~ daily_consumption_hyp_high_kg * 4575,
+      region == "Temperate" ~ daily_consumption_hyp_high_kg * 3628
+    ),
+    Mass_specifc_energy_intake_low_kJ = Total_energy_intake_low_kJ / (Mass_est_t * 1000),
+    Mass_specifc_energy_intake_kJ = Total_energy_intake_kJ / (Mass_est_t * 1000),
+    Mass_specifc_energy_intake_high_kJ = Total_energy_intake_high_kJ / (Mass_est_t*1000),
+    Species = case_when(
+      SpeciesCode == "bw" ~ "Balaenoptera musculus",
+      SpeciesCode == "bp" ~ "Balaenoptera physalus",
+      SpeciesCode == "mn" ~ "Megaptera novaeangliae",
+      SpeciesCode == "bb" ~ "Balaenoptera bonaerensis", 
+      SpeciesCode == "be" ~ "Balaenoptera brydei",
+      SpeciesCode == "bs" ~ "Balaenoptera borealis")
   )
 
 
