@@ -523,7 +523,11 @@ krill_biomass_estimates <- krill_rate_estimates %>%
                                 replace = TRUE),
          Mass_est_t = sample(whale_lengths$Lockyer_mass_t[whale_lengths$SpeciesCode == SpeciesCode[1]],
                              size = n(),
-                             replace = TRUE
+                             replace = TRUE),
+         season_center = ifelse(
+           region == "Temperate",
+           213, # August 1 in northern hemisphere
+           30 # January 30 in southern hemisphere
          )) %>% 
   ungroup %>% 
   left_join(krill_data_Scaling_paper, by = c("SpeciesCode", "region"))
@@ -546,7 +550,7 @@ latitudes <- tribble(
 )
 
 # Overall daily rate, Modified by MATT
-estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
+estimate_daily <- function(rate_estimates, latitude, season_len) {
   yday_start <- floor(yday_center - season_len / 2)
   yday_end <- floor(yday_center + season_len / 2)
   year_start <- as.POSIXct("2019-12-31", tz = "UTC")
@@ -602,11 +606,7 @@ estimate_daily <- function(rate_estimates, latitude, yday_center, season_len) {
 # MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
 # columns day_biomass and night_biomass.
 
-peak_day <- ifelse(
-  krill_biomass_estimates$region == "Temperate",
-  213, # August 1 in northern hemisphere
-  30 # January 30 in southern hemisphere
-)
+
 krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, peak_day, 120)  %>% 
   mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
                                                      region == "Temperate" ~ daily_consumption_low_kg*3628),
