@@ -292,50 +292,50 @@ pooled_sd_mean <- function(sd1, sd2, n1, n2) {
 }
 
 
-# read in, clean, combine data
-MRY_krill_data <-   read_csv("MontereyKrillData_10.21.20.csv") %>% 
-  #read_csv("MontereyKrillDataDiveMeans.csv") %>% 
-  filter(!Species %in% c("bigBW", "bb")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
-  mutate(
-    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
-    Study_Area = "Monterey",
-    Region = "Eastern North Pacific") %>% 
-  rename(SpeciesCode = "Species") 
-
-SoCal_krill_data <-   read_csv("SoCalKrillData_10.21.20.csv") %>% 
-  #read_csv("SoCalKrillDataDiveMeans.csv") %>% 
-  filter(!Species %in% c("bigBW", "bb")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
-  mutate(
-    Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
-    Study_Area = "SoCal",
-    Region = "Eastern North Pacific") %>% 
-  rename(SpeciesCode = "Species") 
-
-# combining Monterey and SoCal prey data
-ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
-  #mutate(Study_Area2 = Study_Area) %>% 
-  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
-  #rename(Study_Area = Study_Area2) %>% 
-  mutate(
-    `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
-    Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
-    Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
-    `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
-    BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
-    BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
-    Study_Area = NA
-    # 
-    # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
-    # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
-    # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
-    # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
-    # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
-    # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
-  ) %>% 
-  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) %>% 
-  mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(10^.x))
+# # read in, clean, combine data
+# MRY_krill_data <-   read_csv("MontereyKrillData_10.21.20.csv") %>% 
+#   #read_csv("MontereyKrillDataDiveMeans.csv") %>% 
+#   filter(!Species %in% c("bigBW", "bb")) %>% 
+#   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+#   mutate(
+#     Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+#     Study_Area = "Monterey",
+#     Region = "Eastern North Pacific") %>% 
+#   rename(SpeciesCode = "Species") 
+# 
+# SoCal_krill_data <-   read_csv("SoCalKrillData_10.21.20.csv") %>% 
+#   #read_csv("SoCalKrillDataDiveMeans.csv") %>% 
+#   filter(!Species %in% c("bigBW", "bb")) %>% 
+#   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+#   mutate(
+#     Biomass_hyp_low = exp(log(Biomass) + log(0.17)),
+#     Study_Area = "SoCal",
+#     Region = "Eastern North Pacific") %>% 
+#   rename(SpeciesCode = "Species") 
+# 
+# # combining Monterey and SoCal prey data
+# ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
+#   #mutate(Study_Area2 = Study_Area) %>% 
+#   pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
+#   #rename(Study_Area = Study_Area2) %>% 
+#   mutate(
+#     `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+#     Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+#     Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
+#     `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+#     BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+#     BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+#     Study_Area = NA
+#     # 
+#     # `Num Days` = coalesce(`Num Days_Monterey`, `Num Days_SoCal`),
+#     # Biomass_hyp_low = coalesce(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+#     # Biomass = coalesce(Biomass_Monterey, Biomass_SoCal),
+#     # `Biomass sd` = coalesce(`Biomass sd_Monterey`, `Biomass sd_SoCal`),
+#     # BiomassTop50 = coalesce(BiomassTop50_Monterey, BiomassTop50_SoCal),
+#     # BiomassTop50sd = coalesce(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`)
+#   ) %>% 
+#   select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) %>% 
+#   mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(10^.x))
 
 
 krill_data_Scaling_paper <- read_csv("KrillData_Scaling_paper.csv") %>% 
@@ -344,37 +344,37 @@ krill_data_Scaling_paper <- read_csv("KrillData_Scaling_paper.csv") %>%
   mutate_at(vars(Biomass, `Biomass sd`), log)
 
 
-WAP_krill_data <-   read_csv("AntarcticKrillData_10.21.20.csv") %>% 
-  #read_csv("AntarcticKrillDataDiveMeans.csv") %>% 
-  filter(!Species %in% c("bigBW")) %>% 
-  select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
-  mutate(
-    Biomass_hyp_low = NA,
-    Study_Area = "Antarctic",
-    Region = "Antarctic") %>% 
-  rename(SpeciesCode = "Species")
-
-# combining ENP prey data
-ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
-  #mutate(Study_Area2 = Study_Area) %>% 
-  pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
-  #rename(Study_Area = Study_Area2) %>% 
-  mutate(
-    `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
-    Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
-    Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
-    `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
-    BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
-    BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
-    Study_Area = NA
-
-  ) %>% 
-  select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
-
-
-All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data) 
-
-All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data)
+# WAP_krill_data <-   read_csv("AntarcticKrillData_10.21.20.csv") %>% 
+#   #read_csv("AntarcticKrillDataDiveMeans.csv") %>% 
+#   filter(!Species %in% c("bigBW")) %>% 
+#   select(Species:BiomassTop50sd) %>%    # remember: biomass is in kg/m3
+#   mutate(
+#     Biomass_hyp_low = NA,
+#     Study_Area = "Antarctic",
+#     Region = "Antarctic") %>% 
+#   rename(SpeciesCode = "Species")
+# 
+# # combining ENP prey data
+# ENP_krill_data <- rbind(MRY_krill_data, SoCal_krill_data) %>% 
+#   #mutate(Study_Area2 = Study_Area) %>% 
+#   pivot_wider(names_from = Study_Area, values_from = c(`Num Days`:Biomass_hyp_low)) %>% 
+#   #rename(Study_Area = Study_Area2) %>% 
+#   mutate(
+#     `Num Days` = `Num Days_Monterey` + `Num Days_SoCal`, 
+#     Biomass_hyp_low = pooled_log_mean(Biomass_hyp_low_Monterey, Biomass_hyp_low_SoCal),
+#     Biomass = pooled_log_mean(Biomass_Monterey, Biomass_SoCal),
+#     `Biomass sd` = pooled_sd_mean(`Biomass sd_Monterey`, `Biomass sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+#     BiomassTop50 = pooled_log_mean(BiomassTop50_Monterey, BiomassTop50_SoCal),
+#     BiomassTop50sd = pooled_sd_mean(`BiomassTop50sd_Monterey`, `BiomassTop50sd_SoCal`, `Num Days_Monterey`, `Num Days_SoCal`),
+#     Study_Area = NA
+# 
+#   ) %>% 
+#   select(-c(`Num Days_Monterey`:Biomass_hyp_low_SoCal)) 
+# 
+# 
+# All_krill_data <- rbind(MRY_krill_data, SoCal_krill_data, WAP_krill_data) 
+# 
+# All_krill_data_ENPcombined <- rbind(ENP_krill_data, WAP_krill_data)
 
 # Whale population data---- 
 #Current data from IUCN 2019 Redlist, whaling data compiled in Rocha et al. 2014
@@ -400,14 +400,14 @@ Krill_data_Ant_projection <- read_excel("AntarcticKrillData_10.21.20.xlsx", shee
   rename(SpeciesCode = "Species") %>% 
   mutate(region = "Polar")
 
-All_krill_data_ENPcombined_noSA <- rbind(ENP_krill_data, WAP_krill_data) %>% 
-  mutate(region = ifelse(Region == "Antarctic",  "Polar","Temperate")) %>% 
-  filter(!SpeciesCode %in% c("bp","bw") | region != "Polar") %>% 
-  bind_rows(Krill_data_Ant_projection) %>%        # bringing in projected data for Antarctic blue and fin whales
-  select(-c(Region, Sv:SvTop50sd)) %>%
-  mutate(Study_Area = case_when(region == "Temperate" ~ "Eastern North Pacific",
-                                region == "Polar" ~ "Antarctic")) %>% 
-  mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(.x))  # natural log transformed, which is what we were doing in the prior iteration
+# All_krill_data_ENPcombined_noSA <- rbind(ENP_krill_data, WAP_krill_data) %>% 
+#   mutate(region = ifelse(Region == "Antarctic",  "Polar","Temperate")) %>% 
+#   filter(!SpeciesCode %in% c("bp","bw") | region != "Polar") %>% 
+#   bind_rows(Krill_data_Ant_projection) %>%        # bringing in projected data for Antarctic blue and fin whales
+#   select(-c(Region, Sv:SvTop50sd)) %>%
+#   mutate(Study_Area = case_when(region == "Temperate" ~ "Eastern North Pacific",
+#                                 region == "Polar" ~ "Antarctic")) %>% 
+#   mutate_at(vars(Biomass_hyp_low:BiomassTop50sd) , ~log(.x))  # natural log transformed, which is what we were doing in the prior iteration
 
 
 # Generate daily rates----
