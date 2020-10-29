@@ -1,6 +1,7 @@
 # Code to generate consumption estimates for baleen whales with prey estimates from the Scaling Paper----
 
 library(tidyverse)
+#library(dplyr)
 library(maptools)
 library(readxl)
 library(ggpubr)
@@ -392,7 +393,7 @@ estimate_daily <- function(rate_estimates, season_len) {
 
 
 krill_daily <- krill_biomass_estimates %>% 
-  estimate_daily(120) %>% 
+  estimate_daily(10) %>% 
   mutate(
     Total_energy_intake_low_kJ = case_when(
       region == "Polar" ~ daily_consumption_hyp_low_kg * 4575,
