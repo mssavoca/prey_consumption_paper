@@ -356,7 +356,9 @@ estimate_daily <- function(rate_estimates, season_len) {
   # to the upper 50% (i.e. to account for selectivity)
   get_daily_mean <- function(logmean, logsd, lunges, trunc) {
     rand <- function(n, meanlog, sdlog) {
-      if (trunc) {
+      if (n == 0) {
+        0
+      } else if (trunc) {
         # Truncate values below median
         EnvStats::rlnormTrunc(n, meanlog, sdlog, min = exp(logmean))
       } else {
