@@ -1,12 +1,12 @@
 # Code to generate consumption estimates for baleen whales with prey estimates from the Scaling Paper----
 
 library(tidyverse)
-#library(dplyr)
 library(maptools)
 library(readxl)
 library(ggpubr)
 library(purrr)
 library(lubridate)
+
 
 SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
@@ -388,6 +388,31 @@ estimate_daily <- function(rate_estimates, season_len) {
       daily_consumption_hyp_low_kg = daily_mean_hyp_low_kg * Engulf_cap_m3 * daily_rate,
       daily_consumption_kg = daily_mean_kg * Engulf_cap_m3 * daily_rate, 
       daily_consumption_hyp_high_kg = daily_mean_hyp_high_kg * Engulf_cap_m3 * daily_rate)
+  
+# Trying a progress bar, from: https://gist.github.com/DavisVaughan/2a6316cdef7e5cebdba100db5e0fa92c#file-progressr-r-L5
+  
+  library(future)
+  library(progressr)
+  library(furrr)
+  
+  # 2 cores
+  plan(multisession, workers = 2L)
+  x <- 1:20
+  random_sleep <- function() {
+    Sys.sleep(sample(1:3, size = 1L))
+  }
+  with_progress({
+    # Create a progressor
+    p <- progressor(along = x)
+    future_map(x, ~{
+      # Sleep for a random amount of time
+      random_sleep()
+      # Tick the progress bar
+      p()
+    })
+  })
+  # shut down the workers
+  plan(sequential)
 }
 
 # MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
@@ -436,5 +461,5 @@ krill_daily <- krill_biomass_estimates %>%
 krill_daily %>%  
   group_by(SpeciesCode) %>% 
   filter(SpeciesCode == "bw", region == "Temperate") %>%
-  pull(daily_consumption_high_kg) %>%
+  pull(daily_consumption_hyp_high_kg) %>%
   summary()
