@@ -160,10 +160,43 @@ measured_length_wt <- whale_lengths %>%
 
 
 krill_data_Scaling_paper <- read_csv("KrillData_Scaling_paper.csv") %>% 
-  mutate(Biomass_hyp_low = ifelse(region == "Polar", NA, log(Biomass) + log(0.17))) %>% 
   rename(SpeciesCode = "Species") %>% 
-  mutate_at(vars(Biomass, `Biomass sd`), log)
+  mutate_at(vars(starts_with("Biomass")), log) %>% 
+  mutate(Biomass_hyp_low = ifelse(region == "Polar", NA, Biomass + log(0.17)))
 
+# Compare the biomass distributions (bw temperate)
+bw_null <- list(meanlog = -0.4625974, sdlog = 0.9020137)
+bw_null_mean <- exp(bw_null$meanlog + bw_null$sdlog / 2)
+bw_bout <- list(meanlog = -0.2059613, sdlog = 0.6568546)
+bw_bout_mean <- exp(bw_bout$meanlog + bw_bout$sdlog / 2)
+ggplot(tibble(x = c(0, 5)), aes(x)) + 
+  # null
+  stat_function(fun = dlnorm, args = list(meanlog = -0.4625974, sdlog = 0.9020137), color = "blue") +  
+  geom_vline(xintercept = bw_null_mean, color = "blue", linetype = "dashed") +
+  # bout
+  stat_function(fun = dlnorm, args = list(meanlog = -0.2059613, sdlog = 0.6568546), color = "red") +
+  geom_vline(xintercept = bw_bout_mean, color = "red", linetype = "dashed") +
+  labs(x = "Biomass density (kg m^-3",
+       y = "Probability density") +
+  theme_classic()
+  
+
+bb_null <- list(meanlog = krill_data_Scaling_paper$Biomass[krill_data_Scaling_paper$SpeciesCode == "bb"], 
+                sdlog = krill_data_Scaling_paper$`Biomass sd`[krill_data_Scaling_paper$SpeciesCode == "bb"])
+bb_null_mean <- exp(bb_null$meanlog + bb_null$sdlog / 2)
+bb_bout <- list(meanlog = krill_data_Scaling_paper$BiomassBout[krill_data_Scaling_paper$SpeciesCode == "bb"], 
+                sdlog = krill_data_Scaling_paper$`BiomassBout sd`[krill_data_Scaling_paper$SpeciesCode == "bb"])
+bb_bout_mean <- exp(bb_bout$meanlog + bb_bout$sdlog / 2)
+ggplot(tibble(x = c(0, 1)), aes(x)) + 
+  # null
+  stat_function(fun = dlnorm, args = bb_null, color = "blue") +  
+  geom_vline(xintercept = bb_null_mean, color = "blue", linetype = "dashed") +
+  # bout
+  stat_function(fun = dlnorm, args = bb_bout, color = "red") +
+  geom_vline(xintercept = bb_bout_mean, color = "red", linetype = "dashed") +
+  labs(x = "Biomass density (kg m^-3",
+       y = "Probability density") +
+  theme_classic()
 
 
 # Whale population data---- 
@@ -211,7 +244,10 @@ daynight_rates <- All_rorqual_deployments %>%
   group_by(ID, region, prey_general, SpeciesCode) %>% 
   group_modify(combine_rates) %>% 
   ungroup() %>% 
-  mutate(prey_general = ifelse(is.na(prey_general), "Krill", prey_general)) 
+  mutate(prey_general = ifelse(is.na(prey_general), "Krill", prey_general)) %>% 
+  bind_rows(
+    mutate(filter(., SpeciesCode %in% c("bp", "bw")), region = "Polar")
+  )
 
 #summary table of deployments by species and regions
 ss_table_dn <- daynight_rates %>%
@@ -276,8 +312,6 @@ estimate_rate <- function(prey, min_lunges, min_dur) {
 }
 krill_rate_estimates <- estimate_rate("Krill", 1, 1)
 
-plot(dur, pred_err, type = "l")
-
 
 dur_sd <- function(dur) {
   Asym <- -1.846
@@ -298,12 +332,7 @@ krill_biomass_estimates <- krill_rate_estimates %>%
                                 replace = TRUE),
          Mass_est_t = sample(whale_lengths$Lockyer_mass_t[whale_lengths$SpeciesCode == SpeciesCode[1]],
                              size = n(),
-                             replace = TRUE),
-         season_center = ifelse(
-           region == "Temperate",
-           213, # August 1 in northern hemisphere
-           30 # January 30 in southern hemisphere
-         )) %>% 
+                             replace = TRUE)) %>% 
   ungroup() %>% 
   left_join(krill_data_Scaling_paper, by = c("SpeciesCode", "region"))
 
@@ -384,43 +413,20 @@ estimate_daily <- function(rate_estimates, season_len) {
       daily_mean_hyp_low_kg = get_daily_mean(Biomass_hyp_low, `Biomass sd`, daily_rate, trunc = FALSE),
       daily_mean_kg = get_daily_mean(Biomass, `Biomass sd`, daily_rate, trunc = FALSE),
       daily_mean_hyp_high_kg = get_daily_mean(Biomass, `Biomass sd`, daily_rate, trunc = TRUE),
+      daily_mean_bout_kg = get_daily_mean(BiomassBout, `BiomassBout sd`, daily_rate, trunc = FALSE),
       
       daily_consumption_hyp_low_kg = daily_mean_hyp_low_kg * Engulf_cap_m3 * daily_rate,
       daily_consumption_kg = daily_mean_kg * Engulf_cap_m3 * daily_rate, 
-      daily_consumption_hyp_high_kg = daily_mean_hyp_high_kg * Engulf_cap_m3 * daily_rate)
-  
-# Trying a progress bar, from: https://gist.github.com/DavisVaughan/2a6316cdef7e5cebdba100db5e0fa92c#file-progressr-r-L5
-  
-  library(future)
-  library(progressr)
-  library(furrr)
-  
-  # 2 cores
-  plan(multisession, workers = 2L)
-  x <- 1:20
-  random_sleep <- function() {
-    Sys.sleep(sample(1:3, size = 1L))
-  }
-  with_progress({
-    # Create a progressor
-    p <- progressor(along = x)
-    future_map(x, ~{
-      # Sleep for a random amount of time
-      random_sleep()
-      # Tick the progress bar
-      p()
-    })
-  })
-  # shut down the workers
-  plan(sequential)
+      daily_consumption_hyp_high_kg = daily_mean_hyp_high_kg * Engulf_cap_m3 * daily_rate,
+      daily_consumption_bout_kg = daily_mean_bout_kg * Engulf_cap_m3 * daily_rate)
 }
-
+  
 # MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
 # columns day_biomass and night_biomass.
 
-
 krill_daily <- krill_biomass_estimates %>% 
-  estimate_daily(10) %>% 
+  filter(i <= 3) %>% # For mini-tests, filtering i will take just the first ith samples per species
+  estimate_daily(season_len = 4) %>% # For mini-tests, shorten season_len (put back to 120 for full run)
   mutate(
     Total_energy_intake_low_kJ = case_when(
       region == "Polar" ~ daily_consumption_hyp_low_kg * 4575,
@@ -434,9 +440,14 @@ krill_daily <- krill_biomass_estimates %>%
       region == "Polar" ~ daily_consumption_hyp_high_kg * 4575,
       region == "Temperate" ~ daily_consumption_hyp_high_kg * 3628
     ),
+    Total_energy_intake_bout_kJ = case_when(
+      region == "Polar" ~ daily_consumption_bout_kg * 4575,
+      region == "Temperate" ~ daily_consumption_bout_kg * 3628
+    ),
     Mass_specifc_energy_intake_low_kJ = Total_energy_intake_low_kJ / (Mass_est_t * 1000),
     Mass_specifc_energy_intake_kJ = Total_energy_intake_kJ / (Mass_est_t * 1000),
     Mass_specifc_energy_intake_high_kJ = Total_energy_intake_high_kJ / (Mass_est_t*1000),
+    Mass_specifc_energy_intake_bout_kJ = Total_energy_intake_bout_kJ / (Mass_est_t*1000),
     Species = case_when(
       SpeciesCode == "bw" ~ "Balaenoptera musculus",
       SpeciesCode == "bp" ~ "Balaenoptera physalus",
@@ -457,9 +468,30 @@ krill_daily <- krill_biomass_estimates %>%
 #load("daynights_krill_v3.RData") # This loads the DIVEMEANS data from DEC 10.20.20
 
 
+# To do energy rate conversion:
+temp_to_polar <- function(temp_mass, temp_energy = 3628, polar_energy = 4575) {
+  temp_mass * temp_energy / polar_energy
+}
+energy_conversion <- krill_daily %>% 
+  filter(SpeciesCode %in% c("bw", "bp")) %>% 
+  mutate_at(vars(starts_with("daily_consumption")),
+            list(energy = temp_to_polar))
+
+# using the feeding rate transfer
+energy_conversion %>% 
+  filter(SpeciesCode == "bw", region == "Polar") %>% 
+  pull(daily_consumption_kg) %>%
+  summary()
+
+# using the energy transfer
+energy_conversion %>% 
+  filter(SpeciesCode == "bw", region == "Temperate") %>% 
+  pull(daily_consumption_kg_energy) %>%
+  summary()
+
 # check to see prey consumption rates 
 krill_daily %>%  
-  group_by(SpeciesCode) %>% 
-  filter(SpeciesCode == "bw", region == "Temperate") %>%
-  pull(daily_consumption_hyp_high_kg) %>%
+  #group_by(SpeciesCode) %>% 
+  filter(SpeciesCode == "bp", region == "Temperate") %>% 
+  pull(daily_consumption_kg) %>%
   summary()
