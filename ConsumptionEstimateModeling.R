@@ -425,8 +425,8 @@ estimate_daily <- function(rate_estimates, season_len) {
 # columns day_biomass and night_biomass.
 
 krill_daily <- krill_biomass_estimates %>% 
-  filter(i <= 3) %>% # For mini-tests, filtering i will take just the first ith samples per species
-  estimate_daily(season_len = 4) %>% # For mini-tests, shorten season_len (put back to 120 for full run)
+  #filter(i <= 10) %>% # For mini-tests, filtering i will take just the first ith samples per species
+  estimate_daily(season_len = 120) %>% # For mini-tests, shorten season_len (put back to 120 for full run)
   mutate(
     Total_energy_intake_low_kJ = case_when(
       region == "Polar" ~ daily_consumption_hyp_low_kg * 4575,
@@ -458,14 +458,8 @@ krill_daily <- krill_biomass_estimates %>%
   )
 
 
-#save(krill_daily, file = "daynights_krill.RData") # THIS SAVES DATA WITH SA, Chile, ETC
-#load("daynights_krill.RData") # THIS LOADS DATA WITH SA, Chile, ETC
-
-#save(krill_daily, file = "daynights_krill_v2.RData") # THIS SAVES DATA WITHOUT SA, Chile, Azores, Norway 
-#load("daynights_krill_v2.RData") # THIS LOADS DATA WITHOUT SA, Chile, Azores, Norway 
-
-#save(krill_daily, file = "daynights_krill_v3.RData") # THIS SAVES *DIVEMEANS* DATA From DEC on 10.20.20 DATA; WITHOUT SA, Chile, Azores, Norway 
-#load("daynights_krill_v3.RData") # This loads the DIVEMEANS data from DEC 10.20.20
+#save(krill_daily, file = "daynights_krill_SP.RData") # data generated from the Scaling Paper; WITHOUT SA, Chile, Azores, Norway 
+#load("daynights_krill_SP.RData") # This loads the data generated from the Scaling Paper from MFC and DEC 10.29.20
 
 
 # To do energy rate conversion:
@@ -485,13 +479,13 @@ energy_conversion %>%
 
 # using the energy transfer
 energy_conversion %>% 
-  filter(SpeciesCode == "bw", region == "Temperate") %>% 
+  filter(SpeciesCode == "bw", region == "Polar") %>% 
   pull(daily_consumption_kg_energy) %>%
   summary()
 
 # check to see prey consumption rates 
 krill_daily %>%  
   #group_by(SpeciesCode) %>% 
-  filter(SpeciesCode == "bp", region == "Temperate") %>% 
+  filter(SpeciesCode == "", region == "Polar") %>% 
   pull(daily_consumption_kg) %>%
   summary()

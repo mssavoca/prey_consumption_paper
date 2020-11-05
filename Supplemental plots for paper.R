@@ -448,40 +448,56 @@ dev.copy2pdf(file="PreyConsumpt_Eq2.pdf", width=18, height=6)
 # Mass Specific Energy Intake ----
 ## of all species and all prey types!
 
-load("daynights_krill_v2.RData") # THIS LOADS DATA WITHOUT SA, Chile, Azores, Norway 
+load("daynights_krill_SP.RData") # THIS LOADS DATA from the Scaling paper WITHOUT SA, Chile, Azores, Norway 
 load("daynights_fish.RData") # This keeps its original name "fish_daily" here
 load("daynights_AntProj.RData") # This keeps its original name "krill_daily_Ant_proj" here
 load("balaenid_sampled.RData")
 
-krill_daily_Ant_proj_forjoin <- krill_daily_Ant_projection %>% 
-  filter(SpeciesCode %in% c("bw", "bp")) %>% 
-  mutate(prey_type = "Antarctic krill")
-fish_daily <- fish_daily %>% 
-  mutate(prey_type = "forage fish")
-krill_daily <- krill_daily %>% 
-  mutate(prey_type = case_when(region == "Polar" ~ "Antarctic krill",
-                               region == "Temperate" ~ "North Pacific krill"),
-         Mass_specifc_energy_intake_best_hyp_low_kJ = case_when(region == "Polar" ~ daily_consumption_hyp_low_kg*4575/Mass_est_t*1000,
-                                                                  region == "Temperate" ~ (daily_consumption_hyp_low_kg*3628)/(Mass_est_t*1000)))
+# krill_daily_Ant_proj_forjoin <- krill_daily_Ant_projection %>% 
+#   filter(SpeciesCode %in% c("bw", "bp")) %>% 
+#   mutate(prey_type = "Antarctic krill")
 
+fish_daily <- fish_daily %>% 
+  mutate(prey_type = "forage fish") %>% 
+  rename(Mass_specifc_energy_intake_kJ = Mass_specifc_energy_intake_best_low_kJ,
+         Mass_specifc_energy_intake_high_kJ = Mass_specifc_energy_intake_best_high_kJ)
+
+krill_daily_en_temp <- krill_daily %>% 
+  filter(region == "Temperate") %>% 
+  mutate(prey_type = case_when(region == "Polar" ~ "Antarctic krill",
+                               region == "Temperate" ~ "North Pacific krill"))
+
+
+krill_daily_en_polar <- krill_daily %>% 
+  filter(region == "Polar") %>% 
+  filter(SpeciesCode %in% c ("mn", "bb")) %>% 
+  mutate(prey_type = case_when(region == "Polar" ~ "Antarctic krill",
+                               region == "Temperate" ~ "North Pacific krill"))
+         
+         
+         # 
+         # Mass_specifc_energy_intake_best_hyp_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575/Mass_est_t*1000,
+         #                                                          region == "Temperate" ~ (daily_consumption_hyp_low_kg*3628)/(Mass_est_t*1000)))
+         # 
 
 
 
 balaenid_sampled <- balaenid_sampled %>% 
   mutate(Mass_est_kg = case_when(Species == "Balaena mysticetus" ~ 70000,
                                  Species == "Eubalaena glacialis" ~ 55000),
-         Mass_specifc_energy_intake_best_high_kJ = prey_t_longday*1000*6620/Mass_est_kg,
-         Mass_specifc_energy_intake_best_low_kJ = prey_t_shortday*1000*6620/Mass_est_kg,
+         Mass_specifc_energy_intake_high_kJ = prey_t_longday*1000*6620/Mass_est_kg,
+         Mass_specifc_energy_intake_kJ = prey_t_shortday*1000*6620/Mass_est_kg,
          prey_type = "copepods")
 
 combined_en <- balaenid_sampled  %>% 
   bind_rows(
-    select(krill_daily,Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ, prey_type),
-    select(fish_daily, prey_type, Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ)
+    select(krill_daily_en_temp, Species, Mass_specifc_energy_intake_kJ, Mass_specifc_energy_intake_high_kJ, prey_type),
+    select(krill_daily_en_polar, Species, Mass_specifc_energy_intake_kJ, Mass_specifc_energy_intake_high_kJ, prey_type),
+    select(fish_daily,  Species, Mass_specifc_energy_intake_kJ, Mass_specifc_energy_intake_high_kJ, prey_type)
     #select(krill_daily_Ant_proj_forjoin, prey_type, Species, Mass_specifc_energy_intake_best_low_kJ, Mass_specifc_energy_intake_best_high_kJ)
   ) %>% 
-  rename(`Lower best estimate` = Mass_specifc_energy_intake_best_low_kJ,
-         `Upper best estimate` = Mass_specifc_energy_intake_best_high_kJ) 
+  rename(`Lower best estimate` = Mass_specifc_energy_intake_kJ,
+         `Upper best estimate` = Mass_specifc_energy_intake_high_kJ) 
 
 En_summ <- combined_en %>% 
   group_by(Species, prey_type) %>% 
@@ -515,41 +531,41 @@ MS_En_in_conservative <- ggplot(combined_en,
       axis.ticks.x = element_blank(),
     strip.text.x = element_text(size = 16), 
         legend.position = "none") +
-  scale_y_log10(labels = scales::comma, limits = c(50, 5000),
-                breaks = c(50,100,250,500,1000,2500,5000))
+  scale_y_log10(labels = scales::comma, limits = c(50, 8000),
+                breaks = c(50,100,250,500,1000,2500,5000,7500))
 MS_En_in_conservative
 
 #Save pdf of plot
-dev.copy2pdf(file="Mass_specific_En_in_MDC_conservative.pdf", width=10, height=4.2)
+dev.copy2pdf(file="Mass_specific_En_in_MDC_conservative.pdf", width=10, height=5.5)
  
 
-MS_En_in_Top50 <- ggplot(combined_en, 
-                                aes(fill = abbr_binom(Species))) +
-  geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), 
-                                   "B. bonaerensis",
-                                   "M. novaeangliae",
-                                   "B. brydei",
-                                   "B. physalus",
-                                   "B. musculus"), 
-                   y = `Upper best estimate`),
-               outlier.shape = NA) +
-  facet_grid(.~prey_type, scales = "free") +
-  geom_hline(yintercept = 242.36, linetype = "dashed") +   # converting the 80 kJ kg d-1 to an MDC type measurement 
-  scale_fill_manual(values = pal) +
-  labs(x = "Species",
-       y = bquote(atop('Mass specific energy intake',
-                       ~(kJ~kg^-1~d^-1)))) + 
-  theme_bw(base_size = 22) +
-  theme(
-    strip.text.x = element_text(size = 16), 
-    axis.text.x = element_text(angle = 45, hjust = 1,
-                                   face = "italic"),
-        legend.text = element_text(face = "italic"),
-    
-    legend.position = "none") +
-  scale_y_log10(labels = scales::comma, limits = c(50, 10000),
-                breaks = c(50,100,250,500,1000,2500,5000,7500))
-MS_En_in_Top50
+# MS_En_in_Top50 <- ggplot(combined_en, 
+#                                 aes(fill = abbr_binom(Species))) +
+#   geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), 
+#                                    "B. bonaerensis",
+#                                    "M. novaeangliae",
+#                                    "B. brydei",
+#                                    "B. physalus",
+#                                    "B. musculus"), 
+#                    y = `Upper best estimate`),
+#                outlier.shape = NA) +
+#   facet_grid(.~prey_type, scales = "free") +
+#   geom_hline(yintercept = 242.36, linetype = "dashed") +   # converting the 80 kJ kg d-1 to an MDC type measurement 
+#   scale_fill_manual(values = pal) +
+#   labs(x = "Species",
+#        y = bquote(atop('Mass specific energy intake',
+#                        ~(kJ~kg^-1~d^-1)))) + 
+#   theme_bw(base_size = 22) +
+#   theme(
+#     strip.text.x = element_text(size = 16), 
+#     axis.text.x = element_text(angle = 45, hjust = 1,
+#                                    face = "italic"),
+#         legend.text = element_text(face = "italic"),
+#     
+#     legend.position = "none") +
+#   scale_y_log10(labels = scales::comma, limits = c(50, 10000),
+#                 breaks = c(50,100,250,500,1000,2500,5000,7500))
+# MS_En_in_Top50
 
 #Save pdf of plot
 dev.copy2pdf(file="Mass_specific_En_in_MDC_Top50.pdf", width=10, height=6)
@@ -562,15 +578,15 @@ MS_En_in_hyp_low <- ggplot(filter(krill_daily, region == "Temperate"),
                                    "M. novaeangliae",
                                    "B. physalus",
                                    "B. musculus"),
-                   y = Mass_specifc_energy_intake_best_hyp_low_kJ),
-               outlier.shape = NA, , alpha = 0.4) +
+                   y = Mass_specifc_energy_intake_low_kJ),
+               outlier.shape = NA, alpha = 0.4) +
   geom_hline(yintercept = 242.36, linetype = "dashed") +   # converting the 80 kJ kg d-1 to an MDC type measurement 
   scale_fill_manual(values = pal) +
   labs(x = "Species",
        y = bquote(atop('Mass specific energy intake',
                        ~(kJ~kg^-1~d^-1)))) + 
-  scale_y_log10(labels = scales::comma, limits = c(1, 1500),
-                breaks = c(1,10,50,100,250,500,1000)) +
+  scale_y_log10(labels = scales::comma, limits = c(10, 2000),
+                breaks = c(10,50,100,250,500,1000, 1500)) +
   theme_bw(base_size = 22) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1,
                                    face = "italic"),
