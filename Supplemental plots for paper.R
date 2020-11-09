@@ -524,13 +524,14 @@ MS_En_in_conservative <- ggplot(combined_en,
   labs(x = "Species",
        y = bquote(atop('Mass specific energy intake',
                        ~(kJ~kg^-1~d^-1)))) + 
+  
   theme_bw(base_size = 22) +
-  theme(
-    axis.title.x = element_blank(),
-      axis.text.x = element_blank(),
-      axis.ticks.x = element_blank(),
-    strip.text.x = element_text(size = 16), 
+  theme(strip.text.x = element_text(size = 16),
+    axis.text.x = element_text(angle = 45, hjust = 1,
+                                   face = "italic"),
+        legend.text = element_text(face = "italic"),
         legend.position = "none") +
+
   scale_y_log10(labels = scales::comma, limits = c(50, 8000),
                 breaks = c(50,100,250,500,1000,2500,5000,7500))
 MS_En_in_conservative
@@ -585,8 +586,8 @@ MS_En_in_hyp_low <- ggplot(filter(krill_daily, region == "Temperate"),
   labs(x = "Species",
        y = bquote(atop('Mass specific energy intake',
                        ~(kJ~kg^-1~d^-1)))) + 
-  scale_y_log10(labels = scales::comma, limits = c(10, 2000),
-                breaks = c(10,50,100,250,500,1000, 1500)) +
+  scale_y_log10(labels = scales::comma, limits = c(50, 8000),
+                breaks = c(50,100,250,500,1000,2500,5000,7500)) +
   theme_bw(base_size = 22) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1,
                                    face = "italic"),
@@ -594,5 +595,5 @@ MS_En_in_hyp_low <- ggplot(filter(krill_daily, region == "Temperate"),
     legend.position = "none")
 MS_En_in_hyp_low
 
-dev.copy2pdf(file="Mass_specific_En_in_MDC_hyp_low.pdf", width=4, height=6)
+dev.copy2pdf(file="Mass_specific_En_in_MDC_hyp_low.pdf", width=4.5, height=6)
  

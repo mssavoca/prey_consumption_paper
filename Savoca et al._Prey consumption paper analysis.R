@@ -180,7 +180,12 @@ All_rorqual_deployments <- dtag_lunges_long %>%
 
 
 
-summ_table <- All_rorqual_deployments %>% filter(Phase == "Total") %>% 
+summ_table <- All_rorqual_deployments %>% filter(Phase == "Total", ID != "mn180705-47") %>% 
+  group_by(SpeciesCode, tag_type) %>% 
+  summarise(num_tags = n_distinct(ID),
+    med_time = median(`Time (hours)`),
+            IQR25_time = quantile(`Time (hours)`, probs = 0.25, na.rm = TRUE),
+            IQR75_time = quantile(`Time (hours)`, probs = 0.75, na.rm = TRUE)) %>% 
   col_summ(sum)
 
 #write.csv(summ_table, "All_rorqual_deployments.csv")
@@ -265,10 +270,16 @@ whale_lengths <- read.csv("whale_masses.csv") %>%
 measured_length_wt <- whale_lengths %>% 
   group_by(SpeciesCode) %>% 
   summarize(sample_size = n(),
-            avg_wt = mean(mass, na.rm = TRUE),
-            SE_wt = SE(mass),
-            avg_length = mean(length),
-            SE_length = SE(length))
+            # avg_wt = mean(mass, na.rm = TRUE),
+            # SE_wt = SE(mass),
+            med_length = median(length),
+            IQR25_length = quantile(length, probs = 0.25),
+            IQR75_length = quantile(length, probs = 0.75),
+            med_engulf = median(Engulfment_m3),
+            IQR25_engulf = quantile(Engulfment_m3, probs = 0.25),
+            IQR75_engulf = quantile(Engulfment_m3, probs = 0.75),
+            )
+
 #write_csv(measured_length,"whale_lengths_summary.csv")
 
 # Dave's KRILL data (updated 10/20/20)----
@@ -634,8 +645,14 @@ load("daynights_krill_v2.RData") # THIS LOADS DATA WITHOUT SA, Chile, Azores, No
 
 # check to see prey consumption rates 
 krill_daily %>%  
-  group_by(SpeciesCode) %>% 
-  filter(SpeciesCode == "bw", region == "Temperate") %>%
+  group_by(SpeciesCode, region) %>% 
+  #filter(SpeciesCode == "bw", region == "Temperate") %>%
+  summarise(med_lunge_d = median(daily_rate),
+            IQR25_lunge = quantile(daily_rate, probs = 0.25),
+            IQR75_lunge = quantile(daily_rate, probs = 0.75),
+            med_cons = median(daily_consumption_kg),
+            IQR25_cons = quantile(daily_consumption_kg, probs = 0.25),
+            IQR75_cons = quantile(daily_consumption_kg, probs = 0.75))
   pull(daily_consumption_hyp_low_kg) %>%
   summary()
 
@@ -723,8 +740,15 @@ load("daynights_fish.RData")
 
 
 fish_daily %>%  
-  group_by(SpeciesCode) %>% 
-  filter(SpeciesCode == "mn") %>%
+  group_by(SpeciesCode, region) %>% 
+  #   filter(SpeciesCode == "mn") %>%
+  summarise(med_lunge_d = median(daily_rate),
+            IQR25_lunge = quantile(daily_rate, probs = 0.25),
+            IQR75_lunge = quantile(daily_rate, probs = 0.75),
+            med_cons = median(daily_consumption_high_kg),
+            IQR25_cons = quantile(daily_consumption_high_kg, probs = 0.25),
+            IQR75_cons = quantile(daily_consumption_high_kg, probs = 0.75))
+
   pull(daily_consumption_low_kg) %>%
   summary()
 
@@ -1086,7 +1110,7 @@ dev.copy2pdf(file="Daily_biomass_ingested_fish.pdf", width=9.5, height=4.75)
 
 # Extended Figure 2----
 Fig_2_Extended_fish <- ggarrange(Daily_rate_fish, Daily_filtration_fish, Daily_biomass_ingested_fish,
-                        labels = c("B","C","D"), 
+                        labels = c("A","B","C"), 
                         font.label = list(size = 18),
                         align = "hv",
                         legend = "none",
@@ -2456,24 +2480,24 @@ Annual_ingestion_PopComb_nonAntarctic <- Annual_filtfeed %>%
   mutate(Species = fct_relevel(factor(abbr_binom(Species)), "M. novaeangliae", "B. physalus")) %>% 
   ggplot() +
   
-  geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
-  geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
-            size = 1.5, linetype = "dashed") +
+  # geom_line(aes(days_feeding, med_ingest_high_t_curr/1e6, color = Species), 
+  #           size = 1.5, linetype = "dashed") +
+  # geom_line(aes(days_feeding, med_ingest_high_t_hist/1e6, color = Species), 
+  #           size = 1.5, linetype = "dashed") +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_hist/1e6, ymax = IQR75_ingest_low_t_hist/1e6, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_hist/1e6, ymax = IQR75_ingest_high_t_hist/1e6, 
+  #                 x=days_feeding), 
+  #             fill = "grey70", alpha = 0.5) +
   
   geom_ribbon(aes(ymin = IQR25_ingest_low_t_curr/1e6, ymax = IQR75_ingest_low_t_curr/1e6, 
                   x=days_feeding), 
               fill = "grey70", alpha = 0.5) +
-  geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
-                  x=days_feeding), 
-              fill = "grey70", alpha = 0.5) +
+  # geom_ribbon(aes(ymin = IQR25_ingest_high_t_curr/1e6, ymax = IQR75_ingest_high_t_curr/1e6, 
+  #                 x=days_feeding), 
+  #             fill = "grey70", alpha = 0.5) +
   geom_line(aes(days_feeding, med_ingest_low_t_curr/1e6, color = Species), 
             size = 1.5) +
   
