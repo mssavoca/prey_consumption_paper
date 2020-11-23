@@ -141,7 +141,11 @@ load("rates[1].RData") # DTAG deployment summary
 tag_guide <- read_excel("TAG GUIDE_5.27.20.xlsx", skip = 2) %>%  # Skips first two rows
   rename(Study_Area = `Study_Area     _`,
          SpeciesCode = `Spec      _`,
-         whaleLength = `Drone  _`)  #loads the tag guide 
+         whaleLength = `Drone  _`,
+         preyData = `Prey Map      _`,
+         preyObserved = `Feed Vid     _`) %>% 
+  mutate(preyData = ifelse(preyObserved %in% c("Y", "Y- General Area", "Y (after deployment)", "General Area",
+                                                   "Y (general)", "Y-brief"), "Y", "N"))#loads the tag guide 
 
 
 dtag_lunges_long <- dtag_lunges_long %>% 
@@ -171,21 +175,27 @@ All_rorqual_deployments <- dtag_lunges_long %>%
   dplyr::select(-Hours) %>% 
   bind_rows(medterm_lunges_long) %>% 
   left_join(
-    dplyr::select(tag_guide, ID, Study_Area, whaleLength), by = "ID") %>% 
+    dplyr::select(tag_guide, ID, Study_Area, whaleLength, preyData, preyObserved), by = "ID") %>% 
   mutate(whaleLength = parse_number(whaleLength)) %>%  
   # manually remove deployments from Azores, Chile, and Norway
   filter(!Study_Area %in% c("Chile", "Azores", "Norway")) %>%  
   filter(!ID %in% c("mn161107-36b", "mn161106-36b", "mn161105-36", "mn151103-7", "mn151103-4", "mn151103-3")) %>%   #includes DEC's CB 2016 whales
   filter(!ID %in% c("mn151031-3", "mn151031-4")) # Removes DEC's CB 2016 whales; ALL SA humpbacks taken out if left on
 
+All_rorqual_deployments %>% filter(Phase =="Total") %>% write_csv("All_rorqual_deployments_for_PM_additions.csv")
 
 
-summ_table <- All_rorqual_deployments %>% filter(Phase == "Total", ID != "mn180705-47") %>% 
+All_rorqual_deployments_forT_S3 <- read_csv("All_rorqual_deployments_for_PM_additions.csv")
+
+summ_table <- All_rorqual_deployments %>%
+  filter(preyObserved == "Y") %>% 
   group_by(SpeciesCode, tag_type) %>% 
   summarise(num_tags = n_distinct(ID),
     med_time = median(`Time (hours)`),
             IQR25_time = quantile(`Time (hours)`, probs = 0.25, na.rm = TRUE),
-            IQR75_time = quantile(`Time (hours)`, probs = 0.75, na.rm = TRUE)) %>% 
+            IQR75_time = quantile(`Time (hours)`, probs = 0.75, na.rm = TRUE)) 
+
+%>% 
   col_summ(sum)
 
 #write.csv(summ_table, "All_rorqual_deployments.csv")
@@ -445,7 +455,10 @@ daynight_rates <- All_rorqual_deployments %>%
   group_by(ID, region, prey_general, SpeciesCode) %>% 
   group_modify(combine_rates) %>% 
   ungroup() %>% 
-  mutate(prey_general = ifelse(is.na(prey_general), "Krill", prey_general)) 
+  mutate(prey_general = ifelse(is.na(prey_general), "Krill", prey_general)) %>% 
+  bind_rows(
+    mutate(filter(., SpeciesCode %in% c("bp", "bw")), region = "Polar")
+  )
 
 #summary table of deployments by species and regions
 ss_table_dn <- daynight_rates %>%
@@ -510,8 +523,6 @@ estimate_rate <- function(prey, min_lunges, min_dur) {
 }
 krill_rate_estimates <- estimate_rate("Krill", 1, 1)
 
-plot(dur, pred_err, type = "l")
-
 
 dur_sd <- function(dur) {
   Asym <- -1.846
@@ -532,13 +543,8 @@ krill_biomass_estimates <- krill_rate_estimates %>%
                                 replace = TRUE),
          Mass_est_t = sample(whale_lengths$Lockyer_mass_t[whale_lengths$SpeciesCode == SpeciesCode[1]],
                              size = n(),
-                             replace = TRUE),
-         season_center = ifelse(
-           region == "Temperate",
-           213, # August 1 in northern hemisphere
-           30 # January 30 in southern hemisphere
-         )) %>% 
-  ungroup %>% 
+                             replace = TRUE)) %>% 
+  ungroup() %>% 
   left_join(krill_data_Scaling_paper, by = c("SpeciesCode", "region"))
 
 
@@ -550,113 +556,154 @@ krill_rate_estimates %>%
   pull(daily_rate) %>% 
   quantile(c(0.25, 0.5, 0.75, 0.95))
 
-
-
-latitudes <- tribble(
-  ~ region,    ~ latitude,
-  "Polar",     65,
-  "Temperate", 36
-)
-
 # Overall daily rate, Modified by MATT
-estimate_daily <- function(rate_estimates, latitude, season_len) {
-  yday_start <- floor(yday_center - season_len / 2)
-  yday_end <- floor(yday_center + season_len / 2)
-  year_start <- as.POSIXct("2019-12-31", tz = "UTC")
-  feeding_days <- year_start + lubridate::days(yday_start:yday_end)
-  
-  daylengths <- crossing(day = feeding_days, latitude) %>% 
-    mutate(
-      sunrise = maptools::sunriset(cbind(0, latitude), day, direction = "sunrise"),
-      sunset = maptools::sunriset(cbind(0, latitude), day, direction = "sunset"),
-      daylen = 24 * (sunset - sunrise),
-      nightlen = 24 - daylen,
-      yday = lubridate::yday(day)
-    )
+estimate_daily <- function(rate_estimates, season_len) {
+  # Peak of feeding season
+  polar_peak <- as.POSIXct("2019-12-31", tz = "UTC") + days(48) # Feb 17
+  temperate_peak <- as.POSIXct("2019-12-31", tz = "UTC") + days(231) # Aug 18
+  # Latitudes
+  polar_lat <- -65
+  temperate_lat <- 36
+  half_season <- floor(season_len / 2)
+  # Day and night lengths
+  feeding_days <- tibble(
+    # Feeding days, polar and temperate
+    polar_feeding = seq(polar_peak - days(half_season),
+                        polar_peak + days(half_season),
+                        by = "1 day"),
+    temperate_feeding = seq(temperate_peak - days(half_season),
+                            temperate_peak + days(half_season),
+                            by = "1 day"),
+    # Hours day/night, polar and temperate
+    polar_sunrise = sunriset(cbind(0, polar_lat), 
+                             polar_feeding, 
+                             direction = "sunrise"),
+    polar_sunset = sunriset(cbind(0, polar_lat), 
+                            polar_feeding, 
+                            direction = "sunset"),
+    polar_daylen = 24 * (polar_sunset - polar_sunrise),
+    polar_nightlen = 24 - polar_daylen,
+    temperate_sunrise = sunriset(cbind(0, temperate_lat), 
+                                 temperate_feeding, 
+                                 direction = "sunrise"),
+    temperate_sunset = sunriset(cbind(0, temperate_lat), 
+                                temperate_feeding, 
+                                direction = "sunset"),
+    temperate_daylen = 24 * (temperate_sunset - temperate_sunrise),
+    temperate_nightlen = 24 - temperate_daylen
+  )
   
   # This function allows for NAs in logmean (i.e. Antarctic hypothetical low) and truncation
   # to the upper 50% (i.e. to account for selectivity)
   get_daily_mean <- function(logmean, logsd, lunges, trunc) {
     rand <- function(n, meanlog, sdlog) {
-      if (trunc) {
+      if (n == 0) {
+        0
+      } else if (trunc) {
         # Truncate values below median
         EnvStats::rlnormTrunc(n, meanlog, sdlog, min = exp(logmean))
       } else {
         rlnorm(n, meanlog, sdlog)
       }
     }
+    
     result <- pmap_dbl(list(lunges, 
                             ifelse(is.na(logmean), 0, logmean), 
                             logsd), 
                        ~ mean(rand(floor(..1), ..2, ..3)))
-    result <- result[is.na(logmean)] <- NA
+    result[is.na(logmean)] <- NA
     result
   }
   
-  # MATT: change rate_estimates to biomass_estimates
-  krill_biomass_estimates %>% 
-    left_join(daylengths, by = "region") %>% 
-    # MATT: change daily_rate to daily_biomass
-    group_by(SpeciesCode, region) %>% 
-    # mutate(biomass_best_low_m3 = rlnorm(n(), Biomass[1], `Biomass sd`[1]),
-    #        biomass_best_high_m3 = rlnorm(n(), BiomassTop50[1], BiomassTop50sd[1]),
-    mutate(daily_rate = day_rate * daylen + night_rate * nightlen) %>% 
-    ungroup() %>% 
+  rate_estimates %>% 
+    full_join(feeding_days, by = character()) %>%
     mutate(
+      daylen = ifelse(region == "Polar", polar_daylen, temperate_daylen),
+      nightlen = ifelse(region == "Polar", polar_nightlen, temperate_nightlen),
+      daily_rate = day_rate * daylen + night_rate * nightlen,
       daily_mean_hyp_low_kg = get_daily_mean(Biomass_hyp_low, `Biomass sd`, daily_rate, trunc = FALSE),
       daily_mean_kg = get_daily_mean(Biomass, `Biomass sd`, daily_rate, trunc = FALSE),
       daily_mean_hyp_high_kg = get_daily_mean(Biomass, `Biomass sd`, daily_rate, trunc = TRUE),
+      daily_mean_bout_kg = get_daily_mean(BiomassBout, `BiomassBout sd`, daily_rate, trunc = FALSE),
       
       daily_consumption_hyp_low_kg = daily_mean_hyp_low_kg * Engulf_cap_m3 * daily_rate,
       daily_consumption_kg = daily_mean_kg * Engulf_cap_m3 * daily_rate, 
-      daily_consumption_hyp_high_kg = daily_mean_hyp_high_kg * Engulf_cap_m3 * daily_rate)
+      daily_consumption_hyp_high_kg = daily_mean_hyp_high_kg * Engulf_cap_m3 * daily_rate,
+      daily_consumption_bout_kg = daily_mean_bout_kg * Engulf_cap_m3 * daily_rate)
 }
 
 # MATT: Change krill_rate_estimates to krill_biomass_estimates. Should have
 # columns day_biomass and night_biomass.
 
-
-krill_daily <- estimate_daily(krill_biomass_estimates, latitudes, peak_day, 120)  %>% 
-  mutate(Total_energy_intake_best_low_kJ = case_when(region == "Polar" ~ daily_consumption_low_kg*4575,
-                                                     region == "Temperate" ~ daily_consumption_low_kg*3628),
-         Total_energy_intake_best_high_kJ = case_when(region == "Polar" ~ daily_consumption_high_kg*4575,
-                                                      region == "Temperate" ~ daily_consumption_high_kg*3628),
-         Mass_specifc_energy_intake_best_high_kJ = Total_energy_intake_best_high_kJ/(Mass_est_t*1000),
-         Mass_specifc_energy_intake_best_low_kJ = Total_energy_intake_best_low_kJ/(Mass_est_t*1000),
-         Species = case_when(
-           SpeciesCode == "bw" ~ "Balaenoptera musculus",
-           SpeciesCode == "bp" ~ "Balaenoptera physalus",
-           SpeciesCode == "mn" ~ "Megaptera novaeangliae",
-           SpeciesCode == "bb" ~ "Balaenoptera bonaerensis", 
-           SpeciesCode == "be" ~ "Balaenoptera brydei",
-           SpeciesCode == "bs" ~ "Balaenoptera borealis")
+krill_daily <- krill_biomass_estimates %>% 
+  filter(i <= 1000) %>% # For mini-tests, filtering i will take just the first ith samples per species
+  estimate_daily(season_len = 120) %>% # For mini-tests, shorten season_len (put back to 120 for full run)
+  mutate(
+    Total_energy_intake_low_kJ = case_when(
+      region == "Polar" ~ daily_consumption_hyp_low_kg * 4575,
+      region == "Temperate" ~ daily_consumption_hyp_low_kg * 3628
+    ),
+    Total_energy_intake_kJ = case_when(
+      region == "Polar" ~ daily_consumption_kg * 4575,
+      region == "Temperate" ~ daily_consumption_kg * 3628
+    ),
+    Total_energy_intake_high_kJ = case_when(
+      region == "Polar" ~ daily_consumption_hyp_high_kg * 4575,
+      region == "Temperate" ~ daily_consumption_hyp_high_kg * 3628
+    ),
+    Total_energy_intake_bout_kJ = case_when(
+      region == "Polar" ~ daily_consumption_bout_kg * 4575,
+      region == "Temperate" ~ daily_consumption_bout_kg * 3628
+    ),
+    Mass_specifc_energy_intake_low_kJ = Total_energy_intake_low_kJ / (Mass_est_t * 1000),
+    Mass_specifc_energy_intake_kJ = Total_energy_intake_kJ / (Mass_est_t * 1000),
+    Mass_specifc_energy_intake_high_kJ = Total_energy_intake_high_kJ / (Mass_est_t*1000),
+    Mass_specifc_energy_intake_bout_kJ = Total_energy_intake_bout_kJ / (Mass_est_t*1000),
+    Species = case_when(
+      SpeciesCode == "bw" ~ "Balaenoptera musculus",
+      SpeciesCode == "bp" ~ "Balaenoptera physalus",
+      SpeciesCode == "mn" ~ "Megaptera novaeangliae",
+      SpeciesCode == "bb" ~ "Balaenoptera bonaerensis", 
+      SpeciesCode == "be" ~ "Balaenoptera brydei",
+      SpeciesCode == "bs" ~ "Balaenoptera borealis")
   )
 
 
-#save(krill_daily, file = "daynights_krill.RData") # THIS SAVES DATA WITH SA, Chile, ETC
-#load("daynights_krill.RData") # THIS LOADS DATA WITH SA, Chile, ETC
 
-#save(krill_daily, file = "daynights_krill_v2.RData") # THIS SAVES DATA WITHOUT SA, Chile, Azores, Norway 
-load("daynights_krill_v2.RData") # THIS LOADS DATA WITHOUT SA, Chile, Azores, Norway 
 
-#save(krill_daily, file = "daynights_krill_v3.RData") # THIS SAVES *DIVEMEANS* DATA From DEC on 10.20.20 DATA; WITHOUT SA, Chile, Azores, Norway 
-#load("daynights_krill_v3.RData") # This loads the DIVEMEANS data from DEC 10.20.20
+#load("daynights_krill_v2.RData") # THIS LOADS DATA from SG paper; WITHOUT SA, Chile, Azores, Norway 
 
+#save(krill_daily, file = "daynights_krill_SP.RData") # data generated from the Scaling Paper for R1; 11.22.20
+#load("daynights_krill_SP.RData") # This loads the data generated from the Scaling Paper for R1; 11.22.20
+
+
+# To do energy rate conversion:
+temp_to_polar <- function(temp_mass, temp_energy = 3628, polar_energy = 4575) {
+  temp_mass * temp_energy / polar_energy
+}
+energy_conversion <- krill_daily %>% 
+  filter(SpeciesCode %in% c("bw", "bp")) %>% 
+  mutate_at(vars(starts_with("daily_consumption")),
+            list(energy = temp_to_polar))
+
+# using the feeding rate transfer
+energy_conversion %>% 
+  filter(SpeciesCode == "bw", region == "Polar") %>% 
+  pull(daily_consumption_kg) %>%
+  summary()
+
+# using the energy transfer
+energy_conversion %>% 
+  filter(SpeciesCode == "bw", region == "Polar") %>% 
+  pull(daily_consumption_kg_energy) %>%
+  summary()
 
 # check to see prey consumption rates 
 krill_daily %>%  
-  group_by(SpeciesCode, region) %>% 
-  #filter(SpeciesCode == "bw", region == "Temperate") %>%
-  summarise(med_lunge_d = median(daily_rate),
-            IQR25_lunge = quantile(daily_rate, probs = 0.25),
-            IQR75_lunge = quantile(daily_rate, probs = 0.75),
-            med_cons = median(daily_consumption_kg),
-            IQR25_cons = quantile(daily_consumption_kg, probs = 0.25),
-            IQR75_cons = quantile(daily_consumption_kg, probs = 0.75))
-  pull(daily_consumption_hyp_low_kg) %>%
+  #group_by(SpeciesCode) %>% 
+  filter(SpeciesCode == "bw", region == "Polar") %>% 
+  pull(daily_consumption_kg) %>%
   summary()
-
-
 
 
 
