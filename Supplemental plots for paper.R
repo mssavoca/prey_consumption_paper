@@ -27,7 +27,7 @@ abbr_binom = function(binom) {
 }
 
 
-# Supplemental map figure of tag deployments ----
+# Fig S3 Supplemental map figure of tag deployments ----
 
 pal <- c("B. bonaerensis" = "firebrick3", "B. borealis" = "goldenrod2", 
          "B. brydei" = "darkorchid3",  "M. novaeangliae" = "gray30", 
@@ -96,8 +96,8 @@ bp_sw <- data.frame(
 
 
 be <- data.frame(
-  lon = rep(seq(6, 13, length.out = 5), each = 2), 
-  lat = rep(seq(-34, -36, length.out = 2)),
+  lon = rep(seq(21, 30, length.out = 5), each = 2), 
+  lat = rep(seq(-36, -38, length.out = 2)),
   Species = "Balaenoptera brydei"
 )
 
@@ -180,7 +180,43 @@ map <- ggplot() +
 map 
 
 
-dev.copy2pdf(file="Map of tag deployments_5.29.20.pdf", width=15, height=8)
+dev.copy2pdf(file="Map of tag deployments_1.25.21.pdf", width=15, height=8)
+
+
+
+# Fig S4 Engulf cap plot
+
+
+
+Engulfment_capacity <- filtration_master %>% 
+  #filter(ID != "bw180904-44") %>%
+  filter(SpeciesCode != "be") %>% 
+  drop_na(whaleLength) %>% 
+  group_by(ID, Species, Engulfment_L) %>% 
+  summarise(whaleLength = first(whaleLength)) %>%
+  mutate(Engulfment_m3 = Engulfment_L/1000) %>%
+  ungroup %>%
+  
+  
+Engulfment_cap_plot <- ggplot(data = filter(whale_lengths, SpeciesCode != "bs"),
+         aes(x = fct_reorder(abbr_binom(Species), Engulfment_m3), y = Engulfment_m3,
+             fill = abbr_binom(Species))) +
+  geom_flat_violin(position = position_nudge(x = 0.075, y = 0), alpha = .8) +
+  geom_boxplot(width = .1, outlier.shape = NA, alpha = 0.5) +
+  geom_point(position = position_jitter(width = .05), alpha = 0.6) +
+  coord_flip() +
+  scale_fill_manual(values = pal) +
+  labs(x = "Species",
+       y = bquote('Engulfment capacity'~(m^3))) +
+  scale_y_log10(labels = scales::comma, breaks = c(1,5,10,50,100)) +
+  theme_classic(base_size = 24) +
+  theme(legend.position = "none",
+        axis.text.y = element_text(face = "italic"))
+Engulfment_cap_plot
+
+dev.copy2pdf(file="Engulfment_capacity.pdf", width=14, height=6.5)
+
+
 
 
 
