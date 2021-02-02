@@ -599,7 +599,7 @@ krill_daily <- krill_biomass_estimates %>%
 #load("daynights_krill_v2.RData") # THIS LOADS DATA from SG paper; WITHOUT SA, Chile, Azores, Norway 
 
 #save(krill_daily, file = "daynights_krill_SP.RData") # data generated from the Scaling Paper for R1; 11.22.20
-#load("daynights_krill_SP.RData") # This loads the data generated from the Scaling Paper for R1; 11.22.20
+load("daynights_krill_SP.RData") # This loads the data generated from the Scaling Paper for R1; 11.22.20
 
 
 # To do energy rate conversion:
@@ -1130,10 +1130,11 @@ Daily_biomass_ingested_nonAntarctic_OldEst <- krill_daily %>%
   geom_flat_violin(
     aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
         y = daily_consumption_hyp_low_kg),
-    position = position_nudge(x = 0.1, y = 0)) +
+    position = position_nudge(x = 0.1, y = 0), alpha = .8) +
   geom_boxplot(aes(x = fct_relevel(abbr_binom(Species), "M. novaeangliae", "B. physalus"),
                    y = daily_consumption_hyp_low_kg), 
                position = position_nudge(x = -0.1, y = 0),
+               alpha = .8,
                width = .15, guides = FALSE, outlier.shape = NA) +
   
   # # best-upper, MOVED TO SUPPLEMENTAL
