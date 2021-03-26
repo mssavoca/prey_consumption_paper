@@ -280,8 +280,8 @@ whale_lengths <- read.csv("whale_masses.csv") %>%
 measured_length_wt <- whale_lengths %>% 
   group_by(SpeciesCode) %>% 
   summarize(sample_size = n(),
-            # avg_wt = mean(mass, na.rm = TRUE),
-            # SE_wt = SE(mass),
+            Lockyer_mass = median(Lockyer_mass_t, na.rm = TRUE),
+            #SE_wt = SE(mass),
             med_length = median(length),
             IQR25_length = quantile(length, probs = 0.25),
             IQR75_length = quantile(length, probs = 0.75),
@@ -608,18 +608,20 @@ temp_to_polar <- function(temp_mass, temp_energy = 3628, polar_energy = 4575) {
 }
 energy_conversion <- krill_daily %>% 
   filter(SpeciesCode %in% c("bw", "bp")) %>% 
+  mutate(daily_cons_en_conv = temp_to_polar(daily_consumption_kg))
+  
   mutate_at(vars(starts_with("daily_consumption")),
             list(energy = temp_to_polar))
 
 # using the feeding rate transfer
 energy_conversion %>% 
-  filter(SpeciesCode == "bw", region == "Polar") %>% 
+  filter(SpeciesCode == "bw", region == "Temperate") %>% 
   pull(daily_consumption_kg) %>%
   summary()
 
 # using the energy transfer
 energy_conversion %>% 
-  filter(SpeciesCode == "bw", region == "Polar") %>% 
+  filter(SpeciesCode == "mn", region == "Polar") %>% 
   pull(daily_consumption_kg_energy) %>%
   summary()
 
